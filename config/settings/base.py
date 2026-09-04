@@ -143,6 +143,15 @@ SIMPLE_JWT = {
     "USER_ID_CLAIM": "user_id",
 }
 
+# ── Demo mode ─────────────────────────────────────────────────────────────
+#
+# Returns the sign-in code in the API response so a tester can read it off the
+# screen instead of being sent someone's server logs. It defeats phone
+# verification completely — anyone who knows a number can sign in as them — so
+# it defaults to off, must be switched on by name, and announces itself at
+# startup and in every response that carries a code.
+OTP_DEMO_MODE = env.bool("OTP_DEMO_MODE", default=False)
+
 # ── Logging ───────────────────────────────────────────────────────────────
 
 LOGGING = {

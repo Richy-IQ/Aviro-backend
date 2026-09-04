@@ -86,3 +86,43 @@ def test_the_code_is_never_stored_in_the_clear():
     otp, code = OtpCode.issue("+2348034129087")
     assert code not in otp.code_hash
     assert otp.code_hash.startswith("pbkdf2_")
+
+
+def test_the_code_is_not_in_the_response_by_default(client, settings):
+    """
+    The default must be safe. A build that hands out sign-in codes has no
+    phone verification at all.
+    """
+    settings.OTP_DEMO_MODE = False
+    response = _request_code(client)
+
+    assert response.status_code == 202
+    assert "demo_code" not in response.data
+    assert "demo_notice" not in response.data
+
+
+def test_demo_mode_returns_the_code_and_says_why(client, settings):
+    settings.OTP_DEMO_MODE = True
+    response = _request_code(client)
+
+    assert response.status_code == 202
+    assert response.data["demo_code"].isdigit()
+    assert len(response.data["demo_code"]) == OtpCode.LENGTH
+    # The notice is part of the contract: a code shown without explanation
+    # teaches testers to expect one.
+    assert "Demo mode" in response.data["demo_notice"]
+
+
+def test_a_demo_code_actually_works(client, settings):
+    """The echoed code must be the real one, or the demo is a lie."""
+    settings.OTP_DEMO_MODE = True
+    response = _request_code(client)
+    assert response.status_code == 202, response.data
+    code = response.data["demo_code"]
+
+    verify = client.post(
+        reverse("accounts:verify-code"),
+        {"phone": "08034129087", "code": code},
+        format="json",
+    )
+    assert verify.status_code == 201
