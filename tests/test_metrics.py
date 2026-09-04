@@ -152,3 +152,59 @@ def test_streak_counts_consecutive_days_and_breaks_on_a_gap(logged_batch):
 
     # The gap is yesterday, so only today counts.
     assert metrics_service.compute(logged_batch).streak_days == 1
+
+
+def test_feed_conversion_is_withheld_while_it_would_be_noise(db, farm, broiler):
+    """
+    A day-old chick weighs 45g. One bag of feed against that mass produces a
+    ratio near 5 and a "behind" verdict on a flock doing nothing wrong, so the
+    number is withheld until it means something.
+    """
+    from datetime import date
+    from decimal import Decimal
+
+    from apps.flocks.models import Batch, DailyLog
+
+    fresh = Batch.objects.create(
+        farm=farm,
+        bird_type=broiler,
+        name="Day one",
+        started_on=date.today(),
+        stocked=500,
+        cost_per_bird=Decimal("850"),
+    )
+    DailyLog.objects.create(
+        batch=fresh, logged_on=date.today(), feed_kg=Decimal("100"), deaths=3
+    )
+
+    assert metrics_service.compute(fresh).feed_conversion is None
+
+
+def test_a_finished_cycle_still_reports_what_it_cost_and_achieved(logged_batch):
+    """
+    Selling every bird leaves none alive. The cycle still cost what it cost and
+    converted feed as well as it did, so those figures must survive the sale —
+    they are the whole point of a closed cycle.
+    """
+    from datetime import date
+
+    sold_on = logged_batch.started_on + timedelta(days=20)
+    Sale.objects.create(
+        batch=logged_batch,
+        sold_on=sold_on,
+        kind=Sale.Kind.FULL,
+        birds=475,
+        average_weight_kg=Decimal("2.40"),
+        revenue=Decimal("3648000"),
+    )
+    logged_batch.status = "closed"
+    logged_batch.closed_on = sold_on
+    logged_batch.save(update_fields=["status", "closed_on"])
+
+    m = metrics_service.compute(logged_batch, on=date.today())
+
+    assert m.alive == 0
+    assert m.earning_birds == 475
+    assert m.cost_per_bird > 0, "a sold-out cycle must not report a cost of zero"
+    assert m.feed_conversion is not None, "the achieved FCR is the headline of a closed cycle"
+    assert m.cost_per_bird == (m.total_cost / 475).quantize(Decimal("0.01"))

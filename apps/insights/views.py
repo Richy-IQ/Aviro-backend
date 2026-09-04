@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from decimal import Decimal
 
 from django.shortcuts import get_object_or_404
 from rest_framework.request import Request
@@ -14,8 +15,10 @@ from apps.farms.permissions import IsFarmMember
 from apps.flocks.models import Batch
 from apps.flocks.services import metrics as metrics_service
 
+from .serializers import CycleReportSerializer
 from .services import alerts as alert_service
 from .services import benchmarks as benchmark_service
+from .services import reports as report_service
 
 
 class FarmAlertsView(APIView):
@@ -61,3 +64,90 @@ class BatchBenchmarkView(APIView):
         batch = get_object_or_404(Batch, pk=batch_id, farm=self.get_farm())
         metrics = metrics_service.compute(batch)
         return Response(benchmark_service.compare(batch, metrics))
+
+
+class CycleReportListView(APIView):
+    """
+    GET /api/v1/farms/<farm_id>/reports/?period=12-mo&include_open=true
+
+    Every cycle in the period, newest first, each stated as revenue less cost
+    of production. Open cycles are included by default and flagged as
+    projections, because a farmer wants to see the batch they are running now
+    alongside the ones they have finished.
+    """
+
+    permission_classes = [IsFarmMember]
+
+    def get_farm(self) -> Farm:
+        return get_object_or_404(Farm, pk=self.kwargs["farm_id"])
+
+    def get(self, request: Request, farm_id) -> Response:
+        self.get_farm()
+
+        period = request.query_params.get("period", "12-mo")
+        if period not in report_service.PERIODS:
+            period = "12-mo"
+        include_open = request.query_params.get("include_open", "true").lower() != "false"
+
+        cycles = report_service.for_farm(farm_id, period=period, include_open=include_open)
+        serialized = CycleReportSerializer(cycles, many=True).data
+
+        # Totals are summed from the same reports the client is about to
+        # render, so the header can never disagree with the rows beneath it.
+        revenue = sum(c.revenue for c in cycles)
+        total_cost = sum(c.total_cost for c in cycles)
+        gross_profit = revenue - total_cost
+
+        return Response(
+            {
+                "period": period,
+                "cycles": serialized,
+                "totals": {
+                    "revenue": str(revenue),
+                    "total_cost": str(total_cost),
+                    "gross_profit": str(gross_profit),
+                    "margin": str(
+                        (gross_profit / revenue * 100).quantize(Decimal("0.1"))
+                        if revenue
+                        else Decimal("0.0")
+                    ),
+                    "birds_sold": sum(c.sold for c in cycles),
+                    "closed_cycles": sum(1 for c in cycles if c.is_closed),
+                },
+            }
+        )
+
+
+class CycleReportDetailView(APIView):
+    """
+    GET /api/v1/farms/<farm_id>/reports/<batch_id>/
+
+    One cycle in full, with the observations that go with it.
+    """
+
+    permission_classes = [IsFarmMember]
+
+    def get_farm(self) -> Farm:
+        return get_object_or_404(Farm, pk=self.kwargs["farm_id"])
+
+    def get(self, request: Request, farm_id, batch_id) -> Response:
+        batch = get_object_or_404(
+            Batch.objects.select_related("bird_type", "breed"),
+            pk=batch_id,
+            farm=self.get_farm(),
+        )
+
+        # Compare against the cycle that closed before this one started, which
+        # is what makes "cost per bird is down 8%" a real statement.
+        previous_batch = (
+            Batch.objects.filter(
+                farm_id=farm_id,
+                status=Batch.Status.CLOSED,
+                started_on__lt=batch.started_on,
+            )
+            .order_by("-started_on")
+            .first()
+        )
+        previous = report_service.build(previous_batch) if previous_batch else None
+
+        return Response(CycleReportSerializer(report_service.build(batch, previous=previous)).data)

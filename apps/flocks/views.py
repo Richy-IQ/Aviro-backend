@@ -85,11 +85,24 @@ class BatchListView(FarmScopedView):
         batches = (
             Batch.objects.filter(farm=self.get_farm())
             .select_related("bird_type", "breed", "pen")
+            .prefetch_related("logs", "sales")
             .order_by("-started_on")
         )
         if request.query_params.get("status"):
             batches = batches.filter(status=request.query_params["status"])
-        return Response(BatchSerializer(batches, many=True).data)
+
+        # Metrics travel with the list. The home screen shows cost per bird and
+        # mortality on every card, and asking for them one batch at a time would
+        # be a round trip each on a connection that can barely afford one.
+        return Response(
+            [
+                {
+                    "batch": BatchSerializer(batch).data,
+                    "metrics": MetricsSerializer(metrics_service.compute(batch)).data,
+                }
+                for batch in batches
+            ]
+        )
 
     def post(self, request: Request, farm_id) -> Response:
         serializer = BatchSerializer(data=request.data)

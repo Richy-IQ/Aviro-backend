@@ -1,0 +1,20 @@
+Metadata-Version: 2.4
+Name: aviro-backend
+Version: 0.1.0
+Summary: Aviro API — farm intelligence for Nigerian poultry farmers
+Requires-Python: >=3.12
+Requires-Dist: Django<6.0,>=5.1
+Requires-Dist: djangorestframework>=3.15
+Requires-Dist: djangorestframework-simplejwt>=5.3
+Requires-Dist: django-cors-headers>=4.4
+Requires-Dist: django-environ>=0.11
+Requires-Dist: psycopg[binary]>=3.2
+Requires-Dist: gunicorn>=23.0
+Requires-Dist: whitenoise>=6.7
+Provides-Extra: dev
+Requires-Dist: pytest>=8.3; extra == "dev"
+Requires-Dist: pytest-django>=4.9; extra == "dev"
+Requires-Dist: pytest-cov>=5.0; extra == "dev"
+Requires-Dist: factory-boy>=3.3; extra == "dev"
+Requires-Dist: ruff>=0.6; extra == "dev"
+Requires-Dist: django-stubs>=5.1; extra == "dev"

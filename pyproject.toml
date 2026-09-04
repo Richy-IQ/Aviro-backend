@@ -15,6 +15,17 @@ dependencies = [
     "whitenoise>=6.7",
 ]
 
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+# Aviro is an application, not a library. Nothing here is meant to be packaged
+# and imported elsewhere, so package auto-discovery is switched off — with
+# apps/, config/ and tests/ all at the top level it would otherwise fail, and
+# the dependency list is the only reason this file exists.
+py-modules = []
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.3",

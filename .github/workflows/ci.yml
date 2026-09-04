@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main, development]
+  pull_request:
+    branches: [main, development]
+
+jobs:
+  test:
+    name: Lint and test
+    runs-on: ubuntu-latest
+
+    # The suite talks to a real Postgres rather than SQLite: constraints and
+    # decimal behaviour differ, and those are exactly what the money code relies on.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: aviro
+          POSTGRES_USER: aviro
+          POSTGRES_PASSWORD: aviro
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aviro -d aviro"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings.development
+      DJANGO_SECRET_KEY: ci-only-not-a-secret
+      DATABASE_URL: postgres://aviro:aviro@localhost:5432/aviro
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install ".[dev]"
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Check for missing migrations
+        # A model changed without a migration breaks the next deploy, and it is
+        # invisible until then.
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Test
+        run: pytest
+
+  docker:
+    name: Production image builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The production target collects static and drops to a non-root user; if
+      # that breaks, it should break here rather than on a deploy.
+      - name: Build production image
+        run: docker build --target production -t aviro-api:ci .
