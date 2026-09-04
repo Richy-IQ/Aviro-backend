@@ -107,7 +107,20 @@ def _deliver(phone_e164: str, code: str) -> None:
     channel = getattr(settings, "OTP_DELIVERY", "console")
 
     if channel == "console":
-        logger.info("OTP for %s is %s", phone_e164, code)
+        # Printed prominently rather than as a plain log line: while no
+        # provider is configured this is the only way to sign in, and a single
+        # INFO line is easy to lose among request logs.
+        logger.info(
+            "\n"
+            "  ===============================================\n"
+            "   AVIRO SIGN-IN CODE\n"
+            "   %s  ->  %s\n"
+            "   No SMS provider configured, so it is printed here.\n"
+            "   Set OTP_DELIVERY to change that.\n"
+            "  ===============================================",
+            phone_e164,
+            code,
+        )
         return
 
     # Deliberately not implemented: wiring a provider means credentials and a
