@@ -2,10 +2,26 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
+from django.core.cache import cache
 
 from apps.accounts.models import User
 from apps.farms.models import Farm, Membership
 from apps.flocks.models import Batch, BirdType, DailyLog
+
+
+@pytest.fixture(autouse=True)
+def reset_throttles():
+    """
+    Clear the cache between tests.
+
+    DRF keeps throttle counters there, and the cache is not part of the
+    database transaction each test runs in — so without this the sixth
+    request-code call in the whole suite is throttled and the failure lands on
+    whichever test happens to run sixth.
+    """
+    cache.clear()
+    yield
+    cache.clear()
 
 
 @pytest.fixture

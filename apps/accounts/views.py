@@ -15,6 +15,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
+from django.conf import settings
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import OtpCode
@@ -42,15 +43,24 @@ class RequestCodeView(APIView):
         serializer.is_valid(raise_exception=True)
         phone = serializer.validated_data["phone"]
 
-        otp_service.request_code(phone)
+        _, plaintext = otp_service.request_code(phone)
 
-        return Response(
-            {
-                "sent_to": mask(phone),
-                "expires_in_seconds": int(OtpCode.LIFETIME.total_seconds()),
-            },
-            status=status.HTTP_202_ACCEPTED,
-        )
+        body = {
+            "sent_to": mask(phone),
+            "expires_in_seconds": int(OtpCode.LIFETIME.total_seconds()),
+        }
+
+        # Demo mode hands the code back so a tester can read it off the screen.
+        # The response says so in as many words, because a client that shows a
+        # code without saying why teaches people to expect it.
+        if getattr(settings, "OTP_DEMO_MODE", False):
+            body["demo_code"] = plaintext
+            body["demo_notice"] = (
+                "Demo mode: this code is shown because phone verification is "
+                "switched off. Do not use this build with real farmers."
+            )
+
+        return Response(body, status=status.HTTP_202_ACCEPTED)
 
 
 @method_decorator(transaction.non_atomic_requests, name="dispatch")

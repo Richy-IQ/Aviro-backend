@@ -53,15 +53,20 @@ class VerifyResult:
         return cls(ok=False, code=code, message=message)
 
 
-def request_code(phone_e164: str) -> OtpCode:
-    """Issue a code for this number and hand it to the delivery channel."""
+def request_code(phone_e164: str) -> tuple[OtpCode, str]:
+    """
+    Issue a code for this number and hand it to the delivery channel.
+
+    Returns the plaintext alongside the record so the caller can echo it in
+    demo mode. It is never stored and never logged outside console delivery.
+    """
     recent = OtpCode.objects.filter(phone=phone_e164).first()
     if recent and timezone.now() - recent.created_at < RESEND_INTERVAL:
         raise OtpThrottled()
 
     otp, plaintext = OtpCode.issue(phone_e164)
     _deliver(phone_e164, plaintext)
-    return otp
+    return otp, plaintext
 
 
 def verify_code(phone_e164: str, submitted: str) -> VerifyResult:
