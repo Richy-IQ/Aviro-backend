@@ -44,6 +44,7 @@ FROM base AS production
 RUN pip install .
 
 COPY . .
+RUN chmod +x docker-entrypoint.sh
 
 ENV DJANGO_SETTINGS_MODULE=config.settings.production
 
@@ -60,17 +61,12 @@ RUN useradd --system --create-home --uid 10001 aviro \
     && chown -R aviro:aviro /app
 USER aviro
 
+# Documentation only. The port actually bound is whatever PORT says at run
+# time, which is how Railway and most other platforms assign one.
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD curl -fsS http://localhost:8000/api/health/ || exit 1
+    CMD curl -fsS "http://localhost:${PORT:-8000}/api/health/" || exit 1
 
-# Two workers per core is the usual starting point; tune with WEB_CONCURRENCY.
-CMD ["gunicorn", "config.wsgi:application", \
-     "--bind", "0.0.0.0:8000", \
-     "--workers", "3", \
-     "--worker-class", "gthread", \
-     "--threads", "4", \
-     "--timeout", "60", \
-     "--access-logfile", "-", \
-     "--error-logfile", "-"]
+# Migrates, then serves. See docker-entrypoint.sh.
+CMD ["./docker-entrypoint.sh"]
