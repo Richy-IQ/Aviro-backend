@@ -24,6 +24,12 @@ SPIKE_MULTIPLE = 3
 MORTALITY_CONCERN_PCT = 7
 FCR_CONCERN = 1.8
 
+# No bird converts feed to meat better than about 1:1. A ratio under this means
+# the recorded weight or the recorded feed is wrong — almost always a mistyped
+# weight — and silently showing it would tell a farmer they are doing
+# brilliantly when their records are broken.
+FCR_IMPLAUSIBLE_BELOW = 1.0
+
 
 @dataclass(frozen=True)
 class Alert:
@@ -60,7 +66,23 @@ def for_batch(batch: Batch) -> list[Alert]:
             )
         )
 
-    if m.feed_conversion and float(m.feed_conversion) > FCR_CONCERN:
+    if m.feed_conversion and float(m.feed_conversion) < FCR_IMPLAUSIBLE_BELOW:
+        alerts.append(
+            Alert(
+                id="fcr-implausible",
+                kind="warn",
+                title="These numbers do not add up",
+                body=(
+                    f"{batch.name} shows {m.feed_conversion}kg of feed for each kilogram of "
+                    f"bird. No bird converts feed better than about 1 to 1, so either the "
+                    f"weight or the feed recorded is wrong."
+                ),
+                action="Check the weight you entered on your last sale.",
+                batch_id=str(batch.id),
+                batch_name=batch.name,
+            )
+        )
+    elif m.feed_conversion and float(m.feed_conversion) > FCR_CONCERN:
         alerts.append(
             Alert(
                 id="fcr-drifting",

@@ -57,6 +57,7 @@ class MetricsSerializer(serializers.Serializer):
     total_feed_kg = serializers.DecimalField(max_digits=10, decimal_places=1)
     total_cost = serializers.DecimalField(max_digits=14, decimal_places=2)
     cost_per_bird = serializers.DecimalField(max_digits=10, decimal_places=2)
+    earning_birds = serializers.IntegerField()
     average_weight_kg = serializers.DecimalField(max_digits=6, decimal_places=2, allow_null=True)
     feed_conversion = serializers.DecimalField(max_digits=5, decimal_places=2, allow_null=True)
     projected_revenue = serializers.DecimalField(max_digits=14, decimal_places=2, allow_null=True)

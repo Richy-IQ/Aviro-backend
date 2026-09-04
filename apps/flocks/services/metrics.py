@@ -74,6 +74,10 @@ class BatchMetrics:
     total_feed_kg: Decimal
     total_cost: Decimal
     cost_per_bird: Decimal
+    # The birds the cost is spread across: those still alive while a cycle is
+    # running, and those actually sold once it has finished. Dividing a closed
+    # cycle by the nought birds left standing would report a cost of zero.
+    earning_birds: int
 
     average_weight_kg: Decimal | None
     feed_conversion: Decimal | None
@@ -123,12 +127,16 @@ def compute(
     total_feed_kg = sum((log.feed_kg for log in logs), Decimal("0"))
     running_cost = sum((log.total_cost for log in logs), Decimal("0"))
     total_cost = _money(batch.chick_cost + running_cost)
-    cost_per_bird = _money(total_cost / alive) if alive else Decimal("0.00")
+
+    # A finished cycle has no birds left, but it still cost what it cost — so
+    # the figures are spread across the birds that were sold.
+    earning_birds = sold if (batch.status == Batch.Status.CLOSED and sold) else alive
+    cost_per_bird = _money(total_cost / earning_birds) if earning_birds else Decimal("0.00")
 
     average_weight = _average_weight(batch, day_in_cycle)
     feed_conversion = None
-    if average_weight and alive and day_in_cycle >= FCR_MEANINGFUL_FROM_DAY:
-        live_mass = Decimal(alive) * average_weight
+    if average_weight and earning_birds and day_in_cycle >= FCR_MEANINGFUL_FROM_DAY:
+        live_mass = Decimal(earning_birds) * average_weight
         if live_mass > 0:
             feed_conversion = (total_feed_kg / live_mass).quantize(Decimal("0.01"))
 
@@ -158,6 +166,7 @@ def compute(
         total_feed_kg=total_feed_kg.quantize(Decimal("0.1")),
         total_cost=total_cost,
         cost_per_bird=cost_per_bird,
+        earning_birds=earning_birds,
         average_weight_kg=average_weight,
         feed_conversion=feed_conversion,
         projected_revenue=projected_revenue,
