@@ -1,0 +1,50 @@
+[project]
+name = "aviro-backend"
+version = "0.1.0"
+description = "Aviro API — farm intelligence for Nigerian poultry farmers"
+requires-python = ">=3.12"
+
+dependencies = [
+    "Django>=5.1,<6.0",
+    "djangorestframework>=3.15",
+    "djangorestframework-simplejwt>=5.3",
+    "django-cors-headers>=4.4",
+    "django-environ>=0.11",
+    "psycopg[binary]>=3.2",
+    "gunicorn>=23.0",
+    "whitenoise>=6.7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-django>=4.9",
+    "pytest-cov>=5.0",
+    "factory-boy>=3.3",
+    "ruff>=0.6",
+    "django-stubs>=5.1",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["migrations"]
+
+[tool.ruff.lint]
+# Correctness, then the things that keep a Django codebase readable.
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "DJ", "RUF"]
+ignore = [
+    "RUF012",  # Django class attrs are conventionally mutable
+    # Domain exceptions read better at the raise site without the suffix:
+    # `raise OtpThrottled()` says more than `raise OtpThrottledError()`.
+    "N818",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["apps", "config"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.development"
+python_files = ["test_*.py", "*_test.py"]
+addopts = "-q --strict-markers"
+testpaths = ["tests", "apps"]

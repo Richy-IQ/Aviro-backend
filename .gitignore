@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+staticfiles/
+media/
+*.sqlite3
+
+# Only local values are secret; .env.example documents the setup.
+.env
+.env.local
