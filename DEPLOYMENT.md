@@ -1,83 +1,95 @@
-# Deploying Aviro to Railway
+# Deploying Aviro
 
-Three services in one Railway project: **Postgres**, **aviro-backend**, and
-**aviro-web**. Deploy them in that order — the frontend needs the backend's
-address, and the backend needs the frontend's.
+**Frontend on Vercel, backend and database on Railway.**
 
-## 1. Postgres
+Deploy the backend first — the frontend needs its address.
 
-Add the Postgres plugin. It provides `DATABASE_URL`, which the backend reads
-directly.
+## Railway: Postgres
 
-## 2. aviro-backend
+Add the Postgres plugin. It supplies `DATABASE_URL`.
 
-Deploy from `Richy-IQ/Aviro-backend`. It builds from the Dockerfile's
-`production` target; `railway.json` sets the health check to `/api/health/`.
+## Railway: aviro-backend
 
-Variables:
+Deploy from `Richy-IQ/Aviro-backend`. It builds the Dockerfile's `production`
+target; `railway.json` points the health check at `/api/health/`, which touches
+the database rather than returning a static 200.
 
 | Variable | Value |
 | --- | --- |
 | `DJANGO_SETTINGS_MODULE` | `config.settings.production` |
-| `DJANGO_SECRET_KEY` | a long random string — generate one, never reuse the dev value |
+| `DJANGO_SECRET_KEY` | a long random string |
 | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` |
-| `DJANGO_ALLOWED_HOSTS` | the backend's own domain, e.g. `aviro-backend-production.up.railway.app` |
-| `CORS_ALLOWED_ORIGINS` | the **frontend's** domain, with scheme |
-| `WEB_CONCURRENCY` | `3` to start |
+| `DJANGO_ALLOWED_HOSTS` | the backend's Railway domain |
+| `CORS_ALLOWED_ORIGINS` | the Vercel domain, with scheme |
+| `OTP_DELIVERY` | `console` until a provider is wired — see below |
 
-Generate a secret key with:
+Generate the secret key with:
 
 ```bash
 python -c "import secrets; print(secrets.token_urlsafe(64))"
 ```
 
-`CORS_ALLOWED_ORIGINS` is the chicken and egg: deploy the backend first with a
-placeholder, then come back and set it once the frontend has a domain.
-
-Migrations run automatically on start — see `docker-entrypoint.sh`. There is no
-separate release step to forget.
-
-Create your admin user once, from the Railway shell:
+Migrations run on start, so there is no release step to forget. Create your
+admin user once from the Railway shell:
 
 ```bash
 python manage.py createsuperuser
 ```
 
-## 3. aviro-web
+### A note on CORS
 
-Deploy from `Richy-IQ/Aviro-web`. Builds from its Dockerfile, no build
-arguments needed.
+`CORS_ALLOWED_ORIGINS` is set for completeness, but it is not what will break
+first. No browser ever calls Django: the phone talks to the Next server on
+Vercel, and that server talks to Railway. CORS is a browser mechanism, so
+server-to-server calls never trigger it. `DJANGO_ALLOWED_HOSTS` is the setting
+that genuinely matters — get it wrong and every request returns 400.
+
+## Vercel: aviro-web
+
+Import `Richy-IQ/Aviro-web`. Vercel detects Next.js and needs no build
+configuration; `next.config.ts` already switches off standalone output when it
+sees Vercel's own builder.
 
 | Variable | Value |
 | --- | --- |
-| `API_URL` | the backend's public URL plus `/api`, e.g. `https://aviro-backend-production.up.railway.app/api` |
-| `API_INTERNAL_URL` | *optional* — `http://aviro-backend.railway.internal:8080/api` to keep API traffic on the private network |
+| `API_URL` | the Railway backend URL plus `/api`, e.g. `https://aviro-backend-production.up.railway.app/api` |
 
-There is deliberately **no `NEXT_PUBLIC_` variable**. The browser never calls
-Django: every request goes through a Server Action or route handler on the
-Next server, which is what allows the session to live in an httpOnly cookie.
-So the API address is read at run time and the same image can be promoted
-between environments without rebuilding.
+Set it for Production, Preview and Development, or preview deploys will fail
+the startup check.
 
-## Both services
+There is deliberately **no `NEXT_PUBLIC_` variable**. Every request goes
+through a Server Action or route handler on the Next server, which is what
+allows the session to live in an httpOnly cookie the browser cannot read.
 
-`PORT` is injected by Railway and both images bind it. Nothing binds a fixed
-port, which is the usual reason a Railway deploy builds green and is
-unreachable.
+The repository also contains a `Dockerfile` and `railway.json`. Vercel ignores
+both; they exist so the frontend can be self-hosted if you ever move it.
 
-## After the first deploy, check
+## After the first deploy
 
 1. `https://<backend>/api/health/` returns `{"status":"ok","database":"ok"}`
-2. Sign-in works end to end — this is the real CORS test
-3. `https://<frontend>/manifest.webmanifest` loads, and the app offers to
-   install on a phone
+2. Open the Vercel URL and request a sign-in code
+3. Read the code from Railway's log viewer — it prints as a labelled block
+4. Sign in, create a farm, log a day
 
-## Known gaps at launch
+If step 2 fails, check `API_URL` on Vercel before anything else.
 
-- **OTP delivery has no provider.** Production raises rather than pretending to
-  send, so sign-in will fail until you wire WhatsApp Business or an SMS gateway
-  in `apps/accounts/services/otp.py`. Set `OTP_DELIVERY=console` to read codes
-  from the logs while testing.
-- **The growing guide has not been reviewed by a vet.** It is the highest-risk
-  content in the product.
-- **Service worker registration is unverified** on a real device.
+## Known gaps
+
+- **OTP delivery has no provider.** With `OTP_DELIVERY=console` the code is
+  printed to the Railway logs, which is fine for you and unusable for farmers.
+  Implement `_deliver()` in `apps/accounts/services/otp.py` against WhatsApp
+  Business, with SMS as a fallback, before real users arrive. Leaving
+  `OTP_DELIVERY` unset in production makes sign-in raise rather than silently
+  do nothing.
+- **The growing guide has not been reviewed by a veterinarian.** It is the
+  highest-risk content in the product.
+- **Service worker registration is unverified on a real device.** It never
+  registers on localhost by design, so this has to be checked on the deployed
+  site.
+- **The frontend has no tests.**
+
+## The npm install-scripts warning
+
+`unrs-resolver … not yet covered by allowScripts` is expected and harmless. It
+arrives through `eslint-config-next` and is only used by the linter; the build
+never touches it.
