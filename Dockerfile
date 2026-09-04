@@ -27,7 +27,7 @@ RUN pip install --upgrade pip setuptools wheel
 # ─────────────────────────────────────────────────────────────────────────────
 FROM base AS development
 
-RUN pip install ".[dev]" 2>/dev/null || pip install -e ".[dev]"
+RUN pip install ".[dev]"
 
 COPY . .
 
