@@ -39,6 +39,12 @@ GOMPERTZ_MATURE_KG = Decimal("4.5")
 GOMPERTZ_B = Decimal("4.8423")
 GOMPERTZ_K = Decimal("0.0502")
 
+# Feed conversion before the birds have any real mass is arithmetic noise: a
+# day-old chick weighs 45g, so a single bag of feed produces a ratio of 5 and a
+# "behind" verdict on a flock that is doing nothing wrong. Withhold it until
+# the number means something.
+FCR_MEANINGFUL_FROM_DAY = 7
+
 # How far past the nominal cycle to look. Broiler economics can stay positive
 # for some weeks past market age, and farmers do hold birds for festive demand.
 PROJECTION_HORIZON_DAYS = 21
@@ -121,7 +127,7 @@ def compute(
 
     average_weight = _average_weight(batch, day_in_cycle)
     feed_conversion = None
-    if average_weight and alive:
+    if average_weight and alive and day_in_cycle >= FCR_MEANINGFUL_FROM_DAY:
         live_mass = Decimal(alive) * average_weight
         if live_mass > 0:
             feed_conversion = (total_feed_kg / live_mass).quantize(Decimal("0.01"))
