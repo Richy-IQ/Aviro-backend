@@ -11,6 +11,10 @@ from django.urls import include, path
 
 from apps.common.views import HealthView
 
+admin.site.site_header = "Aviro administration"
+admin.site.site_title = "Aviro"
+admin.site.index_title = "Farms, flocks and markets"
+
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/health/", HealthView.as_view(), name="health"),

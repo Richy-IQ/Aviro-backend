@@ -7,6 +7,7 @@ top to bottom without knowing what a router generated.
 
 from __future__ import annotations
 
+from django.conf import settings
 from django.db import transaction
 from django.utils.decorators import method_decorator
 from rest_framework import status
@@ -15,7 +16,6 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
-from django.conf import settings
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import OtpCode
