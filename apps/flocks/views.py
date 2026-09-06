@@ -8,9 +8,12 @@ or the ORM. Business rules live in services/, not here.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from rest_framework import status
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -24,12 +27,14 @@ from .models import Batch, BirdType, DailyLog, Sale
 from .serializers import (
     BatchSerializer,
     BirdTypeSerializer,
+    CyclePlanSerializer,
     DailyLogSerializer,
     MetricsSerializer,
     SaleSerializer,
     VaccinationScheduleSerializer,
 )
 from .services import metrics as metrics_service
+from .services import plan as plan_service
 
 
 class FarmScopedView(APIView):
@@ -213,3 +218,62 @@ class SaleListView(FarmScopedView):
             batch.save(update_fields=["status", "closed_on", "updated_at"])
 
         return Response(SaleSerializer(sale).data, status=status.HTTP_201_CREATED)
+
+
+class CyclePlanPreviewView(APIView):
+    """
+    GET /api/v1/bird-types/<code>/plan/?stocked=500&start=2026-09-06&cost_per_bird=850
+
+    The whole cycle before it exists: how much feed, in bags, week by week;
+    when each feed changes; when every vaccination falls; and what it will
+    cost. Shown while a farmer is deciding to stock, which is when the answer
+    changes what they do.
+    """
+
+    def get(self, request: Request, code: str) -> Response:
+        bird_type = get_object_or_404(
+            BirdType.objects.prefetch_related("feed_phases", "vaccination_schedule"), code=code
+        )
+
+        try:
+            stocked = int(request.query_params.get("stocked", 500))
+        except ValueError:
+            raise DomainError("`stocked` must be a whole number of birds.") from None
+        if stocked < 1:
+            raise DomainError("A batch needs at least one bird.")
+
+        raw_start = request.query_params.get("start")
+        started_on = parse_date(raw_start) if raw_start else timezone.localdate()
+        if started_on is None:
+            raise DomainError("`start` must be a date, as YYYY-MM-DD.")
+
+        cost_per_bird = request.query_params.get("cost_per_bird")
+        feed_price = request.query_params.get("feed_price_per_kg")
+
+        cycle_plan = plan_service.build(
+            bird_type,
+            stocked=stocked,
+            started_on=started_on,
+            cost_per_bird=Decimal(cost_per_bird) if cost_per_bird else None,
+            feed_price_per_kg=Decimal(feed_price) if feed_price else None,
+        )
+        return Response(CyclePlanSerializer(cycle_plan).data)
+
+
+class BatchPlanView(FarmScopedView):
+    """
+    GET /api/v1/farms/<farm_id>/batches/<batch_id>/plan/
+
+    The same plan for a batch that already exists, dated from when it was
+    actually stocked.
+    """
+
+    def get(self, request: Request, farm_id, batch_id) -> Response:
+        batch = self.get_batch()
+        cycle_plan = plan_service.build(
+            batch.bird_type,
+            stocked=batch.stocked,
+            started_on=batch.started_on,
+            cost_per_bird=batch.cost_per_bird,
+        )
+        return Response(CyclePlanSerializer(cycle_plan).data)

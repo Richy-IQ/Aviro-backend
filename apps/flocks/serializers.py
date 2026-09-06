@@ -115,3 +115,65 @@ class SaleSerializer(serializers.ModelSerializer):
             "buyer_type", "buyer_name", "note", "created_at",
         ]
         read_only_fields = ["batch", "created_at"]
+
+
+class PhasePlanSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    day_from = serializers.IntegerField()
+    day_to = serializers.IntegerField()
+    starts_on = serializers.DateField()
+    ends_on = serializers.DateField()
+    days = serializers.IntegerField()
+    grams_per_bird_start = serializers.IntegerField()
+    grams_per_bird_end = serializers.IntegerField()
+    total_kg = serializers.DecimalField(max_digits=12, decimal_places=1)
+    bags = serializers.DecimalField(max_digits=10, decimal_places=1)
+    estimated_cost = serializers.DecimalField(max_digits=14, decimal_places=2)
+    notes = serializers.CharField(allow_blank=True)
+
+
+class WeekPlanSerializer(serializers.Serializer):
+    week = serializers.IntegerField()
+    day_from = serializers.IntegerField()
+    day_to = serializers.IntegerField()
+    starts_on = serializers.DateField()
+    feed_name = serializers.CharField()
+    total_kg = serializers.DecimalField(max_digits=12, decimal_places=1)
+    bags = serializers.DecimalField(max_digits=10, decimal_places=1)
+
+
+class PlannedVaccinationSerializer(serializers.Serializer):
+    day = serializers.IntegerField()
+    due_on = serializers.DateField()
+    name = serializers.CharField()
+    route = serializers.CharField()
+    notes = serializers.CharField(allow_blank=True)
+
+
+class CyclePlanSerializer(serializers.Serializer):
+    """Everything a farmer needs to run the cycle, before it starts."""
+
+    bird_type = serializers.CharField()
+    bird_type_label = serializers.CharField()
+    stocked = serializers.IntegerField()
+    started_on = serializers.DateField()
+    ends_on = serializers.DateField()
+    cycle_days = serializers.IntegerField()
+    cycle_goal = serializers.CharField()
+
+    phases = PhasePlanSerializer(many=True)
+    weeks = WeekPlanSerializer(many=True)
+    vaccinations = PlannedVaccinationSerializer(many=True)
+
+    total_feed_kg = serializers.DecimalField(max_digits=12, decimal_places=1)
+    total_bags = serializers.DecimalField(max_digits=10, decimal_places=1)
+    feed_per_bird_kg = serializers.DecimalField(max_digits=6, decimal_places=2)
+    estimated_feed_cost = serializers.DecimalField(max_digits=14, decimal_places=2)
+    estimated_chick_cost = serializers.DecimalField(max_digits=14, decimal_places=2)
+    estimated_total_cost = serializers.DecimalField(max_digits=14, decimal_places=2)
+    estimated_cost_per_bird = serializers.DecimalField(max_digits=12, decimal_places=2)
+    feed_price_per_kg = serializers.DecimalField(max_digits=8, decimal_places=2)
+
+    # Said plainly, because a projection presented as fact is how a farmer ends
+    # up short of feed in week six.
+    caveat = serializers.CharField()
