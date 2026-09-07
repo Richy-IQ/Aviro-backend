@@ -86,13 +86,21 @@ def test_feed_conversion_is_computed_from_the_scale_once_there_is_one(logged_bat
 
 
 def test_the_target_is_interpolated_between_published_points(batch, broiler):
-    """Day 21 is a seeded point at 850g; day 24 must fall between 21 and 28."""
+    """
+    A day between two seeded points lands between them.
+
+    Deliberately not asserted against a hardcoded gram value: these figures are
+    a calibration that will be revised as real Nigerian outcomes come in, and a
+    test that has to be edited every time is a test that stops meaning anything.
+    """
+    seeded = {w.day: Decimal(w.grams) / 1000 for w in broiler.weight_standards.all()}
+
+    for day, grams in seeded.items():
+        assert metrics_service.target_weight_kg(batch, day) == grams
+
     day21 = metrics_service.target_weight_kg(batch, 21)
     day24 = metrics_service.target_weight_kg(batch, 24)
     day28 = metrics_service.target_weight_kg(batch, 28)
-
-    assert day21 == Decimal("0.85")
-    assert day28 == Decimal("1.40")
     assert day21 < day24 < day28
 
 
@@ -100,16 +108,21 @@ def test_the_comparison_is_only_made_against_a_real_measurement(batch):
     """Comparing a modelled weight with a published curve compares two models."""
     assert metrics_service.compute(batch).weight_vs_target_pct is None
 
-    weigh(batch, birds=10, total="8.50")  # 0.85kg on day 21, exactly on target
+    # Weigh ten birds at exactly the target for the day they are on.
+    target = metrics_service.target_weight_kg(batch, 21)
+    weigh(batch, birds=10, total=str(target * 10))
+
     m = metrics_service.compute(batch)
     assert m.weight_vs_target_pct == Decimal("100.0")
 
 
 def test_birds_behind_the_standard_show_it(batch):
-    weigh(batch, birds=10, total="6.00")  # 0.60kg against a 0.85kg target
+    target = metrics_service.target_weight_kg(batch, 21)
+    weigh(batch, birds=10, total=str(target * 10 * Decimal("0.7")))
+
     m = metrics_service.compute(batch)
     assert m.weight_vs_target_pct is not None
-    assert m.weight_vs_target_pct < Decimal("75")
+    assert Decimal("68") < m.weight_vs_target_pct < Decimal("72")
 
 
 def test_a_weight_that_cannot_be_a_bird_is_refused(batch):
