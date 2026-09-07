@@ -90,3 +90,54 @@ class PeriodReportSerializer(serializers.Serializer):
     upcoming = UpcomingSerializer(many=True)
     headline = serializers.CharField()
     notes = serializers.ListField(child=serializers.CharField())
+
+
+class StatementLineSerializer(serializers.Serializer):
+    label = serializers.CharField()
+    amount = serializers.DecimalField(max_digits=14, decimal_places=2)
+    pct_of_revenue = serializers.DecimalField(max_digits=6, decimal_places=1)
+
+
+class BatchInPeriodSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    bird_type = serializers.CharField()
+    started_on = serializers.DateField()
+    stocked = serializers.IntegerField()
+    sold = serializers.IntegerField()
+    status = serializers.CharField()
+
+
+class IncomeStatementSerializer(serializers.Serializer):
+    """A cash-basis income statement for a calendar period."""
+
+    farm_name = serializers.CharField()
+    farm_location = serializers.CharField(allow_blank=True)
+    prepared_on = serializers.DateField()
+    starts_on = serializers.DateField()
+    ends_on = serializers.DateField()
+
+    revenue = serializers.DecimalField(max_digits=14, decimal_places=2)
+    revenue_lines = StatementLineSerializer(many=True)
+
+    cost_lines = StatementLineSerializer(many=True)
+    total_cost = serializers.DecimalField(max_digits=14, decimal_places=2)
+
+    gross_profit = serializers.DecimalField(max_digits=14, decimal_places=2)
+    margin = serializers.DecimalField(max_digits=6, decimal_places=1)
+
+    birds_sold = serializers.IntegerField()
+    kg_sold = serializers.DecimalField(max_digits=12, decimal_places=1)
+    revenue_per_bird = serializers.DecimalField(max_digits=12, decimal_places=2)
+    cost_per_bird = serializers.DecimalField(max_digits=12, decimal_places=2)
+    profit_per_bird = serializers.DecimalField(max_digits=12, decimal_places=2)
+    price_per_kg = serializers.DecimalField(max_digits=12, decimal_places=2, allow_null=True)
+
+    days_in_period = serializers.IntegerField()
+    days_logged = serializers.IntegerField()
+    feed_cost_recorded = serializers.BooleanField()
+
+    batches = BatchInPeriodSerializer(many=True)
+    # Said on the face of the statement, because a lender reading it is
+    # entitled to know how it was put together.
+    basis = serializers.ListField(child=serializers.CharField())
+    limitations = serializers.ListField(child=serializers.CharField())
