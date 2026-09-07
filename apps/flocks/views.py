@@ -29,12 +29,14 @@ from .serializers import (
     BirdTypeSerializer,
     CyclePlanSerializer,
     DailyLogSerializer,
+    DayGuidanceSerializer,
     MetricsSerializer,
     SaleSerializer,
     VaccinationScheduleSerializer,
 )
 from .services import metrics as metrics_service
 from .services import plan as plan_service
+from .services import today as today_service
 
 
 class FarmScopedView(APIView):
@@ -277,3 +279,19 @@ class BatchPlanView(FarmScopedView):
             cost_per_bird=batch.cost_per_bird,
         )
         return Response(CyclePlanSerializer(cycle_plan).data)
+
+
+class BatchTodayView(FarmScopedView):
+    """
+    GET /api/v1/farms/<farm_id>/batches/<batch_id>/today/
+
+    The plan narrowed to one day, for the log screen. Feed is quoted against
+    the birds still alive rather than the number stocked, because a flock that
+    has lost fifty birds should not be fed for fifty birds it no longer has.
+    """
+
+    def get(self, request: Request, farm_id, batch_id) -> Response:
+        batch = self.get_batch()
+        derived = metrics_service.compute(batch)
+        guidance = today_service.build(batch, alive=derived.alive)
+        return Response(DayGuidanceSerializer(guidance).data)

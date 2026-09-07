@@ -133,7 +133,7 @@ class FeedPhase(BaseModel):
         ]
 
     def __str__(self) -> str:
-        return f"{self.name} (days {self.day_from}–{self.day_to})"
+        return f"{self.name} (days {self.day_from}-{self.day_to})"
 
     @property
     def days(self) -> int:
