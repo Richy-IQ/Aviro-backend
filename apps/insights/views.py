@@ -15,19 +15,22 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.common.exceptions import DomainError
-from apps.farms.models import Farm
-from apps.farms.permissions import IsFarmMember
+from apps.farms.models import Farm, Organisation, OrganisationMembership
+from apps.farms.permissions import IsFarmMember, IsOrganisationMember
 from apps.flocks.models import Batch
 from apps.flocks.services import metrics as metrics_service
 
 from .serializers import (
     CycleReportSerializer,
     IncomeStatementSerializer,
+    NetworkOverviewSerializer,
+    OrganisationSerializer,
     PeriodReportSerializer,
 )
 from .services import alerts as alert_service
 from .services import benchmarks as benchmark_service
 from .services import exports as export_service
+from .services import network as network_service
 from .services import period as period_service
 from .services import reports as report_service
 from .services import statement as statement_service
@@ -266,3 +269,47 @@ class FarmRecordsExportView(APIView):
         response = HttpResponse(body, content_type="text/csv; charset=utf-8")
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response
+
+
+class MyOrganisationsView(APIView):
+    """
+    GET /api/v1/organisations/
+
+    The cooperatives this person helps run. Empty for an ordinary farmer, which
+    is the common case and not an error.
+    """
+
+    def get(self, request: Request) -> Response:
+        memberships = OrganisationMembership.objects.filter(
+            user=request.user
+        ).select_related("organisation")
+        organisations = [m.organisation for m in memberships]
+        roles = {m.organisation_id: m.get_role_display() for m in memberships}
+        return Response(
+            OrganisationSerializer(organisations, many=True, context={"roles": roles}).data
+        )
+
+
+class NetworkOverviewView(APIView):
+    """
+    GET /api/v1/organisations/<organisation_id>/overview/?period=week
+
+    Every member farm, worst first, with the reason each one needs a call.
+    Read-only by permission rather than by convention: a cooperative can see
+    how its members are doing and can never write in their books.
+    """
+
+    permission_classes = [IsOrganisationMember]
+
+    def get_organisation(self) -> Organisation:
+        return get_object_or_404(Organisation, pk=self.kwargs["organisation_id"])
+
+    def get(self, request: Request, organisation_id) -> Response:
+        organisation = self.get_organisation()
+
+        period = request.query_params.get("period", "week")
+        if period not in network_service.PERIODS:
+            period = "week"
+
+        overview = network_service.build(organisation, period=period)
+        return Response(NetworkOverviewSerializer(overview).data)

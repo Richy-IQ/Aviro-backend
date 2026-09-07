@@ -141,3 +141,71 @@ class IncomeStatementSerializer(serializers.Serializer):
     # entitled to know how it was put together.
     basis = serializers.ListField(child=serializers.CharField())
     limitations = serializers.ListField(child=serializers.CharField())
+
+
+class NetworkFarmRowSerializer(serializers.Serializer):
+    id = serializers.CharField()
+    name = serializers.CharField()
+    location = serializers.CharField(allow_blank=True)
+
+    active_batches = serializers.IntegerField()
+    birds_alive = serializers.IntegerField()
+
+    days_logged = serializers.IntegerField()
+    days_possible = serializers.IntegerField()
+    last_logged_on = serializers.DateField(allow_null=True)
+    days_silent = serializers.IntegerField(allow_null=True)
+
+    deaths = serializers.IntegerField()
+    deaths_before = serializers.IntegerField()
+    feed_kg = serializers.DecimalField(max_digits=12, decimal_places=1)
+    weight_vs_target_pct = serializers.DecimalField(
+        max_digits=6, decimal_places=1, allow_null=True
+    )
+
+    status = serializers.CharField()
+    attention = serializers.ListField(child=serializers.CharField())
+
+
+class NetworkOverviewSerializer(serializers.Serializer):
+    """A cooperative's farms, worst first."""
+
+    organisation_name = serializers.CharField()
+    period = serializers.CharField()
+    label = serializers.CharField()
+    starts_on = serializers.DateField()
+    ends_on = serializers.DateField()
+    days = serializers.IntegerField()
+
+    farm_count = serializers.IntegerField()
+    farms_with_birds = serializers.IntegerField()
+    farms_logging = serializers.IntegerField()
+    logging_rate_pct = serializers.DecimalField(max_digits=5, decimal_places=1)
+
+    birds_alive = serializers.IntegerField()
+    deaths = serializers.IntegerField()
+    deaths_before = serializers.IntegerField()
+    feed_kg = serializers.DecimalField(max_digits=12, decimal_places=1)
+    feed_bags = serializers.DecimalField(max_digits=10, decimal_places=1)
+
+    rows = NetworkFarmRowSerializer(many=True)
+    needs_attention = NetworkFarmRowSerializer(many=True)
+    headline = serializers.CharField()
+
+
+class OrganisationSerializer(serializers.Serializer):
+    id = serializers.CharField()
+    name = serializers.CharField()
+    kind = serializers.CharField(source="get_kind_display")
+    location = serializers.SerializerMethodField()
+    role = serializers.SerializerMethodField()
+    farm_count = serializers.SerializerMethodField()
+
+    def get_location(self, obj) -> str:
+        return ", ".join(part for part in [obj.lga, obj.state] if part)
+
+    def get_role(self, obj) -> str:
+        return self.context["roles"].get(obj.id, "")
+
+    def get_farm_count(self, obj) -> int:
+        return obj.farms.count()

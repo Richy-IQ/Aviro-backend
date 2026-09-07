@@ -8,11 +8,19 @@ from .views import (
     FarmPeriodReportView,
     FarmRecordsExportView,
     FarmStatementView,
+    MyOrganisationsView,
+    NetworkOverviewView,
 )
 
 app_name = "insights"
 
 urlpatterns = [
+    path("organisations/", MyOrganisationsView.as_view(), name="organisations"),
+    path(
+        "organisations/<uuid:organisation_id>/overview/",
+        NetworkOverviewView.as_view(),
+        name="network-overview",
+    ),
     path("farms/<uuid:farm_id>/alerts/", FarmAlertsView.as_view(), name="alerts"),
     path("farms/<uuid:farm_id>/reports/", CycleReportListView.as_view(), name="reports"),
     path("farms/<uuid:farm_id>/summary/", FarmPeriodReportView.as_view(), name="summary"),

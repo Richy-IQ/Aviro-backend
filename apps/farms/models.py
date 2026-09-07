@@ -14,10 +14,50 @@ from django.db import models
 from apps.common.models import BaseModel
 
 
+class Organisation(BaseModel):
+    """
+    A body that oversees many farms: a cooperative, an out-grower scheme, a
+    feed mill with growers on its books.
+
+    Deliberately not a farm with sub-farms. A cooperative does not own its
+    members' birds and must not be able to write in their books — it needs to
+    see how they are doing, and nothing more. That read-only relationship is
+    the whole model.
+    """
+
+    class Kind(models.TextChoices):
+        COOPERATIVE = "cooperative", "Cooperative"
+        SCHEME = "scheme", "Out-grower scheme"
+        MILL = "mill", "Feed mill"
+        OTHER = "other", "Other"
+
+    name = models.CharField(max_length=160)
+    kind = models.CharField(max_length=20, choices=Kind.choices, default=Kind.COOPERATIVE)
+    state = models.CharField(max_length=60, blank=True)
+    lga = models.CharField(max_length=60, blank=True)
+
+    class Meta:
+        db_table = "farms_organisation"
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class Farm(BaseModel):
     name = models.CharField(max_length=120)
     state = models.CharField(max_length=60, blank=True)
     lga = models.CharField(max_length=60, blank=True)
+
+    # A farm may belong to a cooperative, and keeps working exactly the same
+    # if it does not. Nothing about the farmer's own experience depends on it.
+    organisation = models.ForeignKey(
+        Organisation,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="farms",
+    )
 
     members = models.ManyToManyField(
         settings.AUTH_USER_MODEL,
@@ -112,3 +152,45 @@ class Membership(BaseModel):
     def sees_money(self) -> bool:
         """Attendants log birds; they are not shown what the farm earns."""
         return self.role in {self.Role.OWNER, self.Role.MANAGER, self.Role.VIEWER}
+
+
+class OrganisationMembership(BaseModel):
+    """
+    One person's standing in a cooperative.
+
+    Separate from Membership because they answer different questions: a farm
+    membership says what someone may do on one farm, and this says which farms
+    someone may look at. An officer never gains the right to write in a
+    member's records — no role here grants it.
+    """
+
+    class Role(models.TextChoices):
+        OWNER = "owner", "Owner"
+        OFFICER = "officer", "Field officer"
+        VIEWER = "viewer", "Viewer"
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="organisation_memberships",
+    )
+    organisation = models.ForeignKey(
+        Organisation, on_delete=models.CASCADE, related_name="memberships"
+    )
+    role = models.CharField(max_length=20, choices=Role.choices, default=Role.OFFICER)
+
+    class Meta:
+        db_table = "farms_organisation_membership"
+        ordering = ["organisation", "user"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "organisation"], name="one_membership_per_organisation"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user} — {self.organisation} ({self.role})"
+
+    @property
+    def can_manage(self) -> bool:
+        return self.role == self.Role.OWNER
