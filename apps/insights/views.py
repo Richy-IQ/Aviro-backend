@@ -15,9 +15,10 @@ from apps.farms.permissions import IsFarmMember
 from apps.flocks.models import Batch
 from apps.flocks.services import metrics as metrics_service
 
-from .serializers import CycleReportSerializer
+from .serializers import CycleReportSerializer, PeriodReportSerializer
 from .services import alerts as alert_service
 from .services import benchmarks as benchmark_service
+from .services import period as period_service
 from .services import reports as report_service
 
 
@@ -151,3 +152,28 @@ class CycleReportDetailView(APIView):
         previous = report_service.build(previous_batch) if previous_batch else None
 
         return Response(CycleReportSerializer(report_service.build(batch, previous=previous)).data)
+
+
+class FarmPeriodReportView(APIView):
+    """
+    GET /api/v1/farms/<farm_id>/summary/?period=week
+
+    How the farm is doing right now, rather than how a finished batch did.
+    Counted from what was logged and compared with the window before it, so
+    fourteen deaths reads as better or worse rather than just as fourteen.
+    """
+
+    permission_classes = [IsFarmMember]
+
+    def get_farm(self) -> Farm:
+        return get_object_or_404(Farm, pk=self.kwargs["farm_id"])
+
+    def get(self, request: Request, farm_id) -> Response:
+        self.get_farm()
+
+        period = request.query_params.get("period", "week")
+        if period not in period_service.PERIODS:
+            period = "week"
+
+        summary = period_service.build(farm_id, period=period)
+        return Response(PeriodReportSerializer(summary).data)
