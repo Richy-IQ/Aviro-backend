@@ -267,7 +267,4 @@ def _notes(r: PeriodReport, *, before_any: bool) -> list[str]:
     if not before_any and r.deaths:
         notes.append("There is nothing to compare with yet. Next period will have a trend.")
 
-    if r.revenue > 0:
-        notes.append(f"Birds sold brought in {r.revenue}.")
-
     return notes
