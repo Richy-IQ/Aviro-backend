@@ -5,7 +5,7 @@ from django.db.models import Count, QuerySet
 from django.http import HttpRequest
 from django.utils.html import format_html
 
-from .models import Farm, Membership, Pen
+from .models import Farm, Membership, Organisation, OrganisationMembership, Pen
 
 
 class PenInline(admin.TabularInline):
@@ -110,3 +110,41 @@ class MembershipAdmin(admin.ModelAdmin):
     def pen_scope(self, m: Membership) -> str:
         pens = list(m.pens.all())
         return ", ".join(p.name for p in pens) if pens else "Whole farm"
+
+
+class FarmInline(admin.TabularInline):
+    model = Farm
+    fields = ["name", "state", "lga"]
+    extra = 0
+    show_change_link = True
+
+
+class OrganisationMembershipInline(admin.TabularInline):
+    model = OrganisationMembership
+    autocomplete_fields = ["user"]
+    extra = 0
+
+
+@admin.register(Organisation)
+class OrganisationAdmin(admin.ModelAdmin):
+    list_display = ["name", "kind", "state", "lga", "farm_count"]
+    list_filter = ["kind", "state"]
+    search_fields = ["name", "state", "lga"]
+    inlines = [OrganisationMembershipInline, FarmInline]
+    readonly_fields = ["id", "created_at", "updated_at"]
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet:
+        return super().get_queryset(request).annotate(_farms=Count("farms"))
+
+    @admin.display(description="Farms", ordering="_farms")
+    def farm_count(self, obj) -> int:
+        return obj._farms
+
+
+@admin.register(OrganisationMembership)
+class OrganisationMembershipAdmin(admin.ModelAdmin):
+    list_display = ["user", "organisation", "role", "created_at"]
+    list_filter = ["role", "organisation"]
+    search_fields = ["user__phone", "user__first_name", "organisation__name"]
+    autocomplete_fields = ["user", "organisation"]
+    readonly_fields = ["id", "created_at", "updated_at"]
