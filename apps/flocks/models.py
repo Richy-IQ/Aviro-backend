@@ -94,6 +94,60 @@ class VaccinationSchedule(BaseModel):
         return f"{self.name} — day {self.day}"
 
 
+class FeedPhase(BaseModel):
+    """
+    What a bird of this type eats, and roughly how much, over a stretch of days.
+
+    Intake is not flat within a phase — a bird eats more every day as it grows —
+    so each phase carries the intake at its start and at its end, and the plan
+    interpolates between them. That is enough to tell a farmer how many bags to
+    buy without pretending to a precision nobody has.
+
+    Figures follow published breed-management guides. Real intake moves with
+    temperature, feed quality and management, so the plan presents them as a
+    guide to check against the birds rather than a promise.
+    """
+
+    bird_type = models.ForeignKey(
+        BirdType, on_delete=models.CASCADE, related_name="feed_phases"
+    )
+    name = models.CharField(max_length=60, help_text="e.g. Starter, Grower, Finisher.")
+    day_from = models.PositiveSmallIntegerField()
+    day_to = models.PositiveSmallIntegerField()
+
+    grams_per_bird_start = models.PositiveSmallIntegerField(
+        help_text="Daily intake per bird on the first day of this phase."
+    )
+    grams_per_bird_end = models.PositiveSmallIntegerField(
+        help_text="Daily intake per bird on the last day of this phase."
+    )
+    notes = models.CharField(max_length=300, blank=True)
+
+    class Meta:
+        db_table = "flocks_feed_phase"
+        ordering = ["bird_type", "day_from"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["bird_type", "day_from"], name="one_phase_per_start_day"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.name} (days {self.day_from}–{self.day_to})"
+
+    @property
+    def days(self) -> int:
+        return self.day_to - self.day_from + 1
+
+    def grams_on(self, day: int) -> Decimal:
+        """Interpolate the daily intake for a given day of the cycle."""
+        if self.days <= 1:
+            return Decimal(self.grams_per_bird_start)
+        progress = Decimal(day - self.day_from) / Decimal(self.days - 1)
+        span = Decimal(self.grams_per_bird_end - self.grams_per_bird_start)
+        return Decimal(self.grams_per_bird_start) + span * progress
+
+
 class Batch(BaseModel):
     """One set of birds raised together."""
 
