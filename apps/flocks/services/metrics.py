@@ -16,6 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
+from itertools import pairwise
 
 from django.db.models import Sum
 
@@ -80,6 +81,16 @@ class BatchMetrics:
     earning_birds: int
 
     average_weight_kg: Decimal | None
+    # Where that weight came from: "weighed" (a scale), "sold" (the last sale),
+    # "estimated" (a growth curve) or "unknown". Feed conversion from a curve
+    # is a different claim from feed conversion from a scale.
+    weight_source: str
+    # What the breed standard says this bird should weigh today, and how the
+    # flock compares. Null when the birds have never been weighed.
+    target_weight_kg: Decimal | None
+    weight_vs_target_pct: Decimal | None
+    last_weighed_on: date | None
+
     feed_conversion: Decimal | None
 
     projected_revenue: Decimal | None
@@ -133,7 +144,16 @@ def compute(
     earning_birds = sold if (batch.status == Batch.Status.CLOSED and sold) else alive
     cost_per_bird = _money(total_cost / earning_birds) if earning_birds else Decimal("0.00")
 
-    average_weight = _average_weight(batch, day_in_cycle)
+    average_weight, weight_source = _average_weight(batch, day_in_cycle)
+    target = target_weight_kg(batch, day_in_cycle)
+    last_weighing = batch.weighings.order_by("-weighed_on").first()
+    # Only worth stating against a weight that was actually measured. Comparing
+    # a modelled weight with a published curve compares two models.
+    vs_target = (
+        (average_weight / target * 100).quantize(Decimal("0.1"))
+        if target and average_weight and weight_source in ("weighed", "sold")
+        else None
+    )
     feed_conversion = None
     if average_weight and earning_birds and day_in_cycle >= FCR_MEANINGFUL_FROM_DAY:
         live_mass = Decimal(earning_birds) * average_weight
@@ -168,6 +188,10 @@ def compute(
         cost_per_bird=cost_per_bird,
         earning_birds=earning_birds,
         average_weight_kg=average_weight,
+        weight_source=weight_source,
+        target_weight_kg=target,
+        weight_vs_target_pct=vs_target,
+        last_weighed_on=last_weighing.weighed_on if last_weighing else None,
         feed_conversion=feed_conversion,
         projected_revenue=projected_revenue,
         projected_profit=projected_profit,
@@ -179,24 +203,56 @@ def compute(
     )
 
 
-def _average_weight(batch: Batch, day: int) -> Decimal | None:
+def _average_weight(batch: Batch, day: int) -> tuple[Decimal | None, str]:
     """
-    Estimated live weight per bird.
+    Live weight per bird, and where the figure came from.
 
-    A measured weight from a recent sale beats a model, so use one when it
-    exists. Otherwise fall back to a growth curve for the bird type — which is
-    an estimate, and the API labels it as one.
+    A bird that has been on a scale beats one that has been modelled, so a
+    weighing wins, then a sale, then the growth curve. The source travels with
+    the number because feed conversion computed from a curve is a different
+    claim from feed conversion computed from a scale, and the farmer is
+    entitled to know which one they are reading.
     """
-    recent_sale = batch.sales.order_by("-sold_on").first()
-    if recent_sale:
-        return recent_sale.average_weight_kg
+    weighing = batch.weighings.order_by("-weighed_on").first()
+    sale = batch.sales.order_by("-sold_on").first()
 
-    if batch.bird_type.code != "broiler":
+    # Whichever measurement is more recent. A sale is a weighing of the birds
+    # that left; a weighing is of the birds still there.
+    if weighing and (not sale or weighing.weighed_on >= sale.sold_on):
+        return weighing.average_weight_kg, "weighed"
+    if sale:
+        return sale.average_weight_kg, "sold"
+
+    if batch.bird_type.code not in ("broiler", "mixed"):
         # Only the broiler curve is characterised. For other birds, weight
-        # comes from a sale or it is unknown — better than inventing a number.
-        return None
+        # comes from a scale or it is unknown — better than inventing a number.
+        return None, "unknown"
 
-    return _gompertz_weight(day)
+    return _gompertz_weight(day), "estimated"
+
+
+def target_weight_kg(batch: Batch, day: int) -> Decimal | None:
+    """
+    What this bird should weigh today, interpolated between published points.
+
+    Returns nothing rather than guessing when the day falls outside the range
+    the standard covers.
+    """
+    points = list(batch.bird_type.weight_standards.order_by("day"))
+    if not points:
+        return None
+    if day <= points[0].day:
+        return Decimal(points[0].grams) / 1000
+    if day >= points[-1].day:
+        return Decimal(points[-1].grams) / 1000
+
+    for lower, upper in pairwise(points):
+        if lower.day <= day <= upper.day:
+            span = Decimal(upper.day - lower.day)
+            progress = Decimal(day - lower.day) / span
+            grams = Decimal(lower.grams) + (upper.grams - lower.grams) * progress
+            return (grams / 1000).quantize(Decimal("0.01"))
+    return None
 
 
 def _gompertz_weight(day: int) -> Decimal:

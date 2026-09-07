@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
 from rest_framework import serializers
 
-from .models import Batch, BirdType, Breed, DailyLog, Sale, VaccinationSchedule
+from .models import Batch, BirdType, Breed, DailyLog, Sale, VaccinationSchedule, Weighing
 
 
 class BirdTypeSerializer(serializers.ModelSerializer):
@@ -59,6 +61,12 @@ class MetricsSerializer(serializers.Serializer):
     cost_per_bird = serializers.DecimalField(max_digits=10, decimal_places=2)
     earning_birds = serializers.IntegerField()
     average_weight_kg = serializers.DecimalField(max_digits=6, decimal_places=2, allow_null=True)
+    weight_source = serializers.CharField()
+    target_weight_kg = serializers.DecimalField(max_digits=6, decimal_places=2, allow_null=True)
+    weight_vs_target_pct = serializers.DecimalField(
+        max_digits=6, decimal_places=1, allow_null=True
+    )
+    last_weighed_on = serializers.DateField(allow_null=True)
     feed_conversion = serializers.DecimalField(max_digits=5, decimal_places=2, allow_null=True)
     projected_revenue = serializers.DecimalField(max_digits=14, decimal_places=2, allow_null=True)
     projected_profit = serializers.DecimalField(max_digits=14, decimal_places=2, allow_null=True)
@@ -77,6 +85,56 @@ class MetricsSerializer(serializers.Serializer):
             }
             for point in obj.sell_window
         ]
+
+
+class WeighingSerializer(serializers.ModelSerializer):
+    """
+    A sample of birds on a scale.
+
+    The average is read-only and derived: a farmer records what they measured,
+    and the arithmetic is not theirs to get wrong.
+    """
+
+    day_in_cycle = serializers.IntegerField(read_only=True)
+    average_weight_kg = serializers.DecimalField(
+        max_digits=6, decimal_places=2, read_only=True
+    )
+
+    class Meta:
+        model = Weighing
+        fields = [
+            "id", "batch", "weighed_on", "day_in_cycle",
+            "birds_weighed", "total_weight_kg", "average_weight_kg",
+            "note", "created_at",
+        ]
+        read_only_fields = ["batch", "created_at"]
+
+    def validate_weighed_on(self, value):
+        batch = self.context["batch"]
+        if value < batch.started_on:
+            raise serializers.ValidationError(
+                f"{batch.name} did not start until {batch.started_on}."
+            )
+        return value
+
+    def validate(self, attrs):
+        birds = attrs.get("birds_weighed") or 0
+        total = attrs.get("total_weight_kg") or Decimal("0")
+        if birds and total:
+            average = total / birds
+            # A bird is not 40 kilograms, and it is not 5 grams. Almost always
+            # this is the total and the count the wrong way round.
+            if average > Decimal("12"):
+                raise serializers.ValidationError(
+                    "That works out at more than 12kg a bird. Check the number of "
+                    "birds and the total weight."
+                )
+            if average < Decimal("0.02"):
+                raise serializers.ValidationError(
+                    "That works out at less than 20g a bird. Was the weight in "
+                    "grams rather than kilograms?"
+                )
+        return attrs
 
 
 class DailyLogSerializer(serializers.ModelSerializer):
