@@ -10,6 +10,7 @@ from .views import (
     DailyLogListView,
     SaleListView,
     VaccinationScheduleView,
+    WeighingListView,
 )
 
 app_name = "flocks"
@@ -42,6 +43,11 @@ urlpatterns = [
         "farms/<uuid:farm_id>/batches/<uuid:batch_id>/logs/",
         DailyLogListView.as_view(),
         name="log-list",
+    ),
+    path(
+        "farms/<uuid:farm_id>/batches/<uuid:batch_id>/weighings/",
+        WeighingListView.as_view(),
+        name="weighing-list",
     ),
     path(
         "farms/<uuid:farm_id>/batches/<uuid:batch_id>/sales/",

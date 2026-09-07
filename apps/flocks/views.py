@@ -23,7 +23,7 @@ from apps.common.exceptions import DomainError
 from apps.farms.models import Farm
 from apps.farms.permissions import IsFarmMember
 
-from .models import Batch, BirdType, DailyLog, Sale
+from .models import Batch, BirdType, DailyLog, Sale, Weighing
 from .serializers import (
     BatchSerializer,
     BirdTypeSerializer,
@@ -33,6 +33,7 @@ from .serializers import (
     MetricsSerializer,
     SaleSerializer,
     VaccinationScheduleSerializer,
+    WeighingSerializer,
 )
 from .services import metrics as metrics_service
 from .services import plan as plan_service
@@ -295,3 +296,38 @@ class BatchTodayView(FarmScopedView):
         derived = metrics_service.compute(batch)
         guidance = today_service.build(batch, alive=derived.alive)
         return Response(DayGuidanceSerializer(guidance).data)
+
+
+class WeighingListView(FarmScopedView):
+    """
+    GET/POST /api/v1/farms/<farm_id>/batches/<batch_id>/weighings/
+
+    Birds on a scale. Idempotent per batch and date like the daily log, so a
+    farmer unsure whether they already recorded today's weighing can simply
+    record it again.
+    """
+
+    def get(self, request: Request, farm_id, batch_id) -> Response:
+        batch = self.get_batch()
+        weighings = batch.weighings.all()
+        return Response(WeighingSerializer(weighings, many=True).data)
+
+    @transaction.atomic
+    def post(self, request: Request, farm_id, batch_id) -> Response:
+        batch = self.get_batch()
+        serializer = WeighingSerializer(data=request.data, context={"batch": batch})
+        serializer.is_valid(raise_exception=True)
+
+        weighed_on = serializer.validated_data["weighed_on"]
+        existing = Weighing.objects.filter(batch=batch, weighed_on=weighed_on).first()
+        if existing:
+            serializer = WeighingSerializer(
+                existing, data=request.data, context={"batch": batch}
+            )
+            serializer.is_valid(raise_exception=True)
+
+        serializer.save(batch=batch)
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK if existing else status.HTTP_201_CREATED,
+        )

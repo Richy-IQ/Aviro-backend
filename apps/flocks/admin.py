@@ -12,7 +12,17 @@ from django.db.models import Count, QuerySet
 from django.http import HttpRequest
 from django.utils.html import format_html
 
-from .models import Batch, BirdType, Breed, DailyLog, Sale, VaccinationSchedule
+from .models import (
+    Batch,
+    BirdType,
+    Breed,
+    DailyLog,
+    FeedPhase,
+    Sale,
+    VaccinationSchedule,
+    Weighing,
+    WeightStandard,
+)
 from .services import metrics as metrics_service
 
 
@@ -257,3 +267,40 @@ class SaleAdmin(admin.ModelAdmin):
     def per_kg(self, sale: Sale) -> str:
         rate = sale.price_per_kg
         return f"₦{rate:,.2f}" if rate else "—"
+
+
+@admin.register(FeedPhase)
+class FeedPhaseAdmin(admin.ModelAdmin):
+    list_display = [
+        "name", "bird_type", "day_from", "day_to",
+        "grams_per_bird_start", "grams_per_bird_end",
+    ]
+    list_filter = ["bird_type"]
+    search_fields = ["name", "bird_type__label", "notes"]
+    ordering = ["bird_type", "day_from"]
+    readonly_fields = ["id", "days", "created_at", "updated_at"]
+
+
+@admin.register(WeightStandard)
+class WeightStandardAdmin(admin.ModelAdmin):
+    list_display = ["bird_type", "day", "grams"]
+    list_filter = ["bird_type"]
+    search_fields = ["bird_type__label", "bird_type__code"]
+    ordering = ["bird_type", "day"]
+    readonly_fields = ["id", "created_at", "updated_at"]
+
+
+@admin.register(Weighing)
+class WeighingAdmin(admin.ModelAdmin):
+    list_display = [
+        "weighed_on", "batch", "day_in_cycle", "birds_weighed",
+        "total_weight_kg", "average_weight_kg",
+    ]
+    list_filter = ["weighed_on", "batch__farm", "batch__bird_type"]
+    search_fields = ["batch__name", "batch__farm__name", "note"]
+    autocomplete_fields = ["batch"]
+    date_hierarchy = "weighed_on"
+    readonly_fields = ["id", "day_in_cycle", "average_weight_kg", "created_at", "updated_at"]
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet:
+        return super().get_queryset(request).select_related("batch", "batch__farm")

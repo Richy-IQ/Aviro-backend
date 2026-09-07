@@ -290,3 +290,79 @@ class Sale(BaseModel):
     def price_per_kg(self) -> Decimal | None:
         weight = self.birds * self.average_weight_kg
         return self.revenue / weight if weight else None
+
+
+class WeightStandard(BaseModel):
+    """
+    What a bird of this kind should weigh on a given day.
+
+    Published breed figures, held as points on a curve rather than a formula so
+    a layer and a broiler can be described by the same mechanism, and so a
+    figure can be corrected without touching code. Days between two points are
+    interpolated.
+    """
+
+    bird_type = models.ForeignKey(
+        BirdType, on_delete=models.CASCADE, related_name="weight_standards"
+    )
+    day = models.PositiveSmallIntegerField(help_text="Day of the cycle.")
+    grams = models.PositiveIntegerField(help_text="Expected live weight on that day, in grams.")
+
+    class Meta:
+        db_table = "flocks_weight_standard"
+        ordering = ["bird_type", "day"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["bird_type", "day"], name="one_weight_standard_per_day"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.bird_type.code} day {self.day}: {self.grams}g"
+
+
+class Weighing(BaseModel):
+    """
+    A sample of birds put on a scale.
+
+    Nobody weighs a whole flock, so what is recorded is what was measured: how
+    many birds went on the scale and what they came to together. The average is
+    derived rather than typed, because a farmer holding ten birds and a scale
+    should not also be doing division.
+    """
+
+    batch = models.ForeignKey(Batch, on_delete=models.CASCADE, related_name="weighings")
+    weighed_on = models.DateField()
+
+    birds_weighed = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1)],
+        help_text="How many birds went on the scale.",
+    )
+    total_weight_kg = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        help_text="What those birds weighed together.",
+    )
+    note = models.CharField(max_length=300, blank=True)
+
+    class Meta:
+        db_table = "flocks_weighing"
+        ordering = ["-weighed_on"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["batch", "weighed_on"], name="one_weighing_per_batch_per_day"
+            ),
+        ]
+        indexes = [models.Index(fields=["batch", "-weighed_on"])]
+
+    def __str__(self) -> str:
+        return f"{self.batch.name} — {self.weighed_on}: {self.average_weight_kg}kg"
+
+    @property
+    def average_weight_kg(self) -> Decimal:
+        return (self.total_weight_kg / self.birds_weighed).quantize(Decimal("0.01"))
+
+    @property
+    def day_in_cycle(self) -> int:
+        return (self.weighed_on - self.batch.started_on).days + 1
