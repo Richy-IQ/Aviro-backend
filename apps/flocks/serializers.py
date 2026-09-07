@@ -177,3 +177,42 @@ class CyclePlanSerializer(serializers.Serializer):
     # Said plainly, because a projection presented as fact is how a farmer ends
     # up short of feed in week six.
     caveat = serializers.CharField()
+
+
+class DueDoseSerializer(serializers.Serializer):
+    day = serializers.IntegerField()
+    due_on = serializers.DateField()
+    name = serializers.CharField()
+    route = serializers.CharField()
+    notes = serializers.CharField(allow_blank=True)
+
+
+class DayGuidanceSerializer(serializers.Serializer):
+    """
+    The plan narrowed to today, for the screen where a farmer records the day.
+
+    Feed fields are nullable: birds outside the feeding programme — a layer in
+    lay, a broiler held back for a buyer — still get a log screen, just without
+    a target to compare against.
+    """
+
+    on = serializers.DateField()
+    day = serializers.IntegerField()
+    birds_alive = serializers.IntegerField()
+
+    phase_name = serializers.CharField(allow_null=True)
+    grams_per_bird = serializers.IntegerField(allow_null=True)
+    expected_kg = serializers.DecimalField(max_digits=10, decimal_places=1, allow_null=True)
+    expected_bags = serializers.DecimalField(max_digits=8, decimal_places=1, allow_null=True)
+    low_kg = serializers.DecimalField(max_digits=10, decimal_places=1, allow_null=True)
+    high_kg = serializers.DecimalField(max_digits=10, decimal_places=1, allow_null=True)
+
+    next_phase_name = serializers.CharField(allow_null=True)
+    next_phase_starts_on = serializers.DateField(allow_null=True)
+    days_until_change = serializers.IntegerField(allow_null=True)
+
+    due_today = DueDoseSerializer(many=True)
+    due_soon = DueDoseSerializer(many=True)
+
+    deaths_watch_from = serializers.IntegerField()
+    caveat = serializers.CharField()

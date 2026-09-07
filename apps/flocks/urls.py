@@ -4,6 +4,7 @@ from .views import (
     BatchDetailView,
     BatchListView,
     BatchPlanView,
+    BatchTodayView,
     BirdTypeListView,
     CyclePlanPreviewView,
     DailyLogListView,
@@ -31,6 +32,11 @@ urlpatterns = [
         "farms/<uuid:farm_id>/batches/<uuid:batch_id>/plan/",
         BatchPlanView.as_view(),
         name="batch-plan",
+    ),
+    path(
+        "farms/<uuid:farm_id>/batches/<uuid:batch_id>/today/",
+        BatchTodayView.as_view(),
+        name="batch-today",
     ),
     path(
         "farms/<uuid:farm_id>/batches/<uuid:batch_id>/logs/",
