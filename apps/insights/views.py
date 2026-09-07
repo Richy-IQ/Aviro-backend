@@ -3,23 +3,34 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from datetime import date
 from decimal import Decimal
 
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from django.utils.dateparse import parse_date
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.common.exceptions import DomainError
 from apps.farms.models import Farm
 from apps.farms.permissions import IsFarmMember
 from apps.flocks.models import Batch
 from apps.flocks.services import metrics as metrics_service
 
-from .serializers import CycleReportSerializer, PeriodReportSerializer
+from .serializers import (
+    CycleReportSerializer,
+    IncomeStatementSerializer,
+    PeriodReportSerializer,
+)
 from .services import alerts as alert_service
 from .services import benchmarks as benchmark_service
+from .services import exports as export_service
 from .services import period as period_service
 from .services import reports as report_service
+from .services import statement as statement_service
 
 
 class FarmAlertsView(APIView):
@@ -177,3 +188,81 @@ class FarmPeriodReportView(APIView):
 
         summary = period_service.build(farm_id, period=period)
         return Response(PeriodReportSerializer(summary).data)
+
+
+def _range(request: Request) -> tuple[date, date]:
+    """
+    The period a statement or export covers.
+
+    `from` and `to` win when both are given; otherwise a named window, so the
+    common cases are one tap and the unusual ones are still reachable.
+    """
+    today = timezone.localdate()
+    named = {
+        "this-month": statement_service.month_to_date,
+        "last-month": statement_service.last_full_month,
+        "this-year": statement_service.year_to_date,
+        "12-mo": statement_service.trailing_year,
+    }
+
+    raw_from = request.query_params.get("from")
+    raw_to = request.query_params.get("to")
+    if raw_from and raw_to:
+        starts_on, ends_on = parse_date(raw_from), parse_date(raw_to)
+        if starts_on is None or ends_on is None:
+            raise DomainError("`from` and `to` must be dates, as YYYY-MM-DD.")
+        if ends_on < starts_on:
+            raise DomainError("The period ends before it starts.")
+        return starts_on, ends_on
+
+    window = named.get(request.query_params.get("period", "12-mo"), statement_service.trailing_year)
+    return window(today)
+
+
+class FarmStatementView(APIView):
+    """
+    GET /api/v1/farms/<farm_id>/statement/?period=this-year
+
+    A cash-basis income statement for a calendar period, for a farmer who has
+    been asked for one. Nothing on it is estimated, and it carries how complete
+    the underlying records are so the reader can weigh it.
+    """
+
+    permission_classes = [IsFarmMember]
+
+    def get_farm(self) -> Farm:
+        return get_object_or_404(Farm, pk=self.kwargs["farm_id"])
+
+    def get(self, request: Request, farm_id) -> Response:
+        farm = self.get_farm()
+        starts_on, ends_on = _range(request)
+        statement = statement_service.build(farm, starts_on=starts_on, ends_on=ends_on)
+        return Response(IncomeStatementSerializer(statement).data)
+
+
+class FarmRecordsExportView(APIView):
+    """
+    GET /api/v1/farms/<farm_id>/records/?dataset=logs&period=this-month
+
+    The rows themselves, as CSV. Raw and underived: a figure someone can
+    recompute is worth more than one they have to trust.
+    """
+
+    permission_classes = [IsFarmMember]
+
+    def get_farm(self) -> Farm:
+        return get_object_or_404(Farm, pk=self.kwargs["farm_id"])
+
+    def get(self, request: Request, farm_id) -> HttpResponse:
+        farm = self.get_farm()
+        dataset = request.query_params.get("dataset", "logs")
+        if dataset not in export_service.DATASETS:
+            raise DomainError("`dataset` must be either `logs` or `sales`.")
+
+        starts_on, ends_on = _range(request)
+        body, filename = export_service.build(
+            farm, dataset=dataset, starts_on=starts_on, ends_on=ends_on
+        )
+        response = HttpResponse(body, content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response

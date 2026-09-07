@@ -6,6 +6,8 @@ from .views import (
     CycleReportListView,
     FarmAlertsView,
     FarmPeriodReportView,
+    FarmRecordsExportView,
+    FarmStatementView,
 )
 
 app_name = "insights"
@@ -14,6 +16,8 @@ urlpatterns = [
     path("farms/<uuid:farm_id>/alerts/", FarmAlertsView.as_view(), name="alerts"),
     path("farms/<uuid:farm_id>/reports/", CycleReportListView.as_view(), name="reports"),
     path("farms/<uuid:farm_id>/summary/", FarmPeriodReportView.as_view(), name="summary"),
+    path("farms/<uuid:farm_id>/statement/", FarmStatementView.as_view(), name="statement"),
+    path("farms/<uuid:farm_id>/records/", FarmRecordsExportView.as_view(), name="records"),
     path(
         "farms/<uuid:farm_id>/reports/<uuid:batch_id>/",
         CycleReportDetailView.as_view(),
