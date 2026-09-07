@@ -41,3 +41,52 @@ class CycleReportSerializer(serializers.Serializer):
     price_per_kg = serializers.DecimalField(max_digits=12, decimal_places=2, allow_null=True)
 
     insights = serializers.ListField(child=serializers.CharField())
+
+
+class BatchLineSerializer(serializers.Serializer):
+    id = serializers.CharField()
+    name = serializers.CharField()
+    bird_type = serializers.CharField()
+    day = serializers.IntegerField()
+    birds_alive = serializers.IntegerField()
+    deaths = serializers.IntegerField()
+    feed_kg = serializers.DecimalField(max_digits=12, decimal_places=1)
+    days_logged = serializers.IntegerField()
+
+
+class UpcomingSerializer(serializers.Serializer):
+    batch_name = serializers.CharField()
+    day = serializers.IntegerField()
+    due_on = serializers.DateField()
+    what = serializers.CharField()
+
+
+class PeriodReportSerializer(serializers.Serializer):
+    """The farm over the last week or month, against the window before it."""
+
+    period = serializers.CharField()
+    label = serializers.CharField()
+    starts_on = serializers.DateField()
+    ends_on = serializers.DateField()
+    days = serializers.IntegerField()
+
+    days_logged = serializers.IntegerField()
+    days_possible = serializers.IntegerField()
+    active_batches = serializers.IntegerField()
+    birds_alive = serializers.IntegerField()
+
+    deaths = serializers.IntegerField()
+    deaths_before = serializers.IntegerField()
+
+    feed_kg = serializers.DecimalField(max_digits=12, decimal_places=1)
+    feed_bags = serializers.DecimalField(max_digits=10, decimal_places=1)
+    feed_before_kg = serializers.DecimalField(max_digits=12, decimal_places=1)
+
+    recorded_spend = serializers.DecimalField(max_digits=14, decimal_places=2)
+    revenue = serializers.DecimalField(max_digits=14, decimal_places=2)
+    feed_cost_recorded = serializers.BooleanField()
+
+    batches = BatchLineSerializer(many=True)
+    upcoming = UpcomingSerializer(many=True)
+    headline = serializers.CharField()
+    notes = serializers.ListField(child=serializers.CharField())
