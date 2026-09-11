@@ -26,3 +26,6 @@ REST_FRAMEWORK = {
 # OTP codes are printed to the console instead of being sent, so no SMS is
 # spent during development. See apps.accounts.services.otp.
 OTP_DELIVERY = "console"
+
+# Payments settle instantly and no money moves. See apps.billing.services.providers.
+PAYMENTS_PROVIDER = env("PAYMENTS_PROVIDER", default="fake")

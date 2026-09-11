@@ -6,8 +6,10 @@ this file should tell you exactly how the deployed service differs from a
 development one.
 """
 
+from django.core.exceptions import ImproperlyConfigured
+
 from .base import *  # noqa: F403
-from .base import env
+from .base import PAYMENTS_PROVIDER, env
 
 DEBUG = False
 
@@ -39,3 +41,11 @@ CONN_MAX_AGE = 60
 
 # Real delivery. The provider is configured in apps.accounts.services.otp.
 OTP_DELIVERY = env("OTP_DELIVERY", default="sms")
+
+# The fake provider settles every payment without money moving. Starting a
+# production server with it would unlock every farm for nothing, so it is
+# refused here rather than warned about.
+if PAYMENTS_PROVIDER == "fake":
+    raise ImproperlyConfigured("PAYMENTS_PROVIDER=fake cannot be used in production.")
+
+FRONTEND_URL = env("FRONTEND_URL").rstrip("/")

@@ -23,4 +23,5 @@ urlpatterns = [
     path("api/v1/", include("apps.flocks.urls")),
     path("api/v1/", include("apps.insights.urls")),
     path("api/v1/markets/", include("apps.markets.urls")),
+    path("api/v1/", include("apps.billing.urls")),
 ]
