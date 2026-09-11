@@ -50,10 +50,16 @@ ENV DJANGO_SETTINGS_MODULE=config.settings.production
 
 # Static files are collected at build time so the running container never needs
 # write access to the image.
+#
+# Production settings refuse to load without their required variables, and the
+# host's variables are not visible during a build. Every required one needs a
+# placeholder here, or the image cannot be built at all — add to this list
+# whenever production.py gains an env("...") with no default.
 RUN DJANGO_SECRET_KEY=build-only \
     DATABASE_URL=postgres://build:build@localhost:5432/build \
     DJANGO_ALLOWED_HOSTS=localhost \
     CORS_ALLOWED_ORIGINS=http://localhost \
+    FRONTEND_URL=http://localhost \
     python manage.py collectstatic --noinput
 
 # Running as root inside a container is the default and it should not be.
