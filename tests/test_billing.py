@@ -410,3 +410,72 @@ def test_a_paystack_verification_is_read_correctly():
         result = PaystackProvider("sk_test").verify("R1")
     assert result.succeeded
     assert result.amount_kobo == 250000
+
+
+# ── When Paystack says no ───────────────────────────────────────────────────
+
+
+def _http_error(code: int, message: str):
+    import io
+    import urllib.error
+
+    return urllib.error.HTTPError(
+        url="https://api.paystack.co/transaction/initialize",
+        code=code,
+        msg="Unauthorized",
+        hdrs=None,
+        fp=io.BytesIO(json.dumps({"status": False, "message": message}).encode()),
+    )
+
+
+def test_paystacks_reason_is_kept_not_swallowed(batch, user, settings):
+    """
+    Paystack refuses with a 4xx and says why. That reason is the diagnosis:
+    it is kept on the failed payment for the admin, not shown to the farmer.
+    """
+    from apps.billing.services.providers import ProviderUnavailable
+
+    settings.PAYMENTS_PROVIDER = "paystack"
+    settings.PAYSTACK_SECRET_KEY = "sk_test_abc"
+    with mock.patch("urllib.request.urlopen", side_effect=_http_error(401, "Invalid key")):
+        with pytest.raises(ProviderUnavailable) as raised:
+            checkout.start(farm=batch.farm, batch=batch, user=user)
+
+    assert "Invalid key" not in str(raised.value.detail)
+    payment = Payment.objects.get()
+    assert payment.status == Payment.Status.FAILED
+    assert payment.provider_response == {"stage": "start", "error": "HTTP 401: Invalid key"}
+
+
+def test_an_attempt_that_never_reached_paystack_is_not_in_the_farmers_history(
+    batch, user, settings, client_for
+):
+    """"Failed ₦2,500" would read as money gone when none moved."""
+    from apps.billing.services.providers import ProviderUnavailable
+
+    settings.PAYMENTS_PROVIDER = "paystack"
+    settings.PAYSTACK_SECRET_KEY = "sk_test_abc"
+    with mock.patch("urllib.request.urlopen", side_effect=_http_error(400, "Invalid email")):
+        with pytest.raises(ProviderUnavailable):
+            checkout.start(farm=batch.farm, batch=batch, user=user)
+
+    response = client_for(user).get(f"/api/v1/farms/{batch.farm.id}/billing/")
+    assert response.data["payments"] == []
+
+
+def test_a_key_pasted_with_whitespace_or_quotes_still_works():
+    from apps.billing.services.providers import clean_key
+
+    assert clean_key("  sk_test_abc\n") == "sk_test_abc"
+    assert clean_key('"sk_test_abc"') == "sk_test_abc"
+    assert PaystackProvider(" sk_test_abc \n").secret_key == "sk_test_abc"
+
+
+def test_the_public_key_pasted_by_mistake_is_flagged(settings):
+    from apps.billing.checks import payments_are_configured
+
+    settings.PAYMENTS_PROVIDER = "paystack"
+    settings.PAYSTACK_SECRET_KEY = "pk_test_abc"
+    ids = [w.id for w in payments_are_configured(None)]
+    assert "billing.W003" in ids
+

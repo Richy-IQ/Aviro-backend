@@ -73,10 +73,13 @@ class FarmBillingView(APIView):
                 },
                 "included": INCLUDED,
                 "always_free": ALWAYS_FREE,
+                # Attempts that never reached the payment page are left out:
+                # "Failed ₦3,000" reads as money gone when none moved. They stay
+                # in the admin, with the provider's reason.
                 "payments": PaymentSerializer(
-                    farm.payments.select_related("batch").exclude(
-                        status=Payment.Status.PENDING
-                    ),
+                    farm.payments.select_related("batch")
+                    .exclude(status=Payment.Status.PENDING)
+                    .exclude(provider_response__stage="start"),
                     many=True,
                 ).data,
                 "can_pay": request.membership.can_manage_team,

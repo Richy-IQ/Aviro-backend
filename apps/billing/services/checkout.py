@@ -26,7 +26,7 @@ from apps.flocks.models import Batch
 
 from ..models import Payment
 from . import access
-from .providers import FakeProvider, PaystackProvider, get_provider
+from .providers import FakeProvider, PaystackProvider, ProviderUnavailable, get_provider
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +126,7 @@ def start(*, farm: Farm, batch: Batch, user) -> Started:
     offer = offer_for(batch)
     _refuse_if_pointless(batch, offer)
 
-    provider = get_provider()
+    provider = get_provider()  # Raises before a row exists if payments are unconfigured.
     payment = Payment.objects.create(
         farm=farm,
         batch=batch,
@@ -137,13 +137,21 @@ def start(*, farm: Farm, batch: Batch, user) -> Started:
         provider=provider.name,
     )
 
-    checkout = provider.initialize(
-        email=_receipt_email(user),
-        amount_kobo=payment.amount_kobo,
-        reference=payment.reference,
-        callback_url=f"{settings.FRONTEND_URL}/billing/done",
-        metadata={"farm": str(farm.id), "batch": str(batch.id), "kind": offer.kind},
-    )
+    try:
+        checkout = provider.initialize(
+            email=_receipt_email(user),
+            amount_kobo=payment.amount_kobo,
+            reference=payment.reference,
+            callback_url=f"{settings.FRONTEND_URL}/billing/done",
+            metadata={"farm": str(farm.id), "batch": str(batch.id), "kind": offer.kind},
+        )
+    except ProviderUnavailable as exc:
+        # Kept as a failed payment with the provider's reason, so whoever runs
+        # the admin can see exactly why a farmer could not pay.
+        payment.status = Payment.Status.FAILED
+        payment.provider_response = {"stage": "start", "error": exc.provider_message}
+        payment.save(update_fields=["status", "provider_response", "updated_at"])
+        raise
     return Started(payment=payment, authorization_url=checkout.authorization_url)
 
 

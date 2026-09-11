@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -26,13 +27,37 @@ from django.core.cache import cache
 from rest_framework import status
 from rest_framework.exceptions import APIException
 
+logger = logging.getLogger(__name__)
+
 
 class ProviderUnavailable(APIException):
-    """The payment provider could not be reached, or refused the request."""
+    """
+    The payment provider could not be reached, or refused the request.
+
+    The farmer is shown a plain sentence. What the provider actually said —
+    "Invalid key", "Invalid Email Address Passed" — is kept on the exception,
+    logged, and recorded on the payment, because it is the whole diagnosis and
+    is no use to a farmer.
+    """
 
     status_code = status.HTTP_502_BAD_GATEWAY
     default_detail = "Payments are not available just now. Please try again shortly."
     default_code = "payment_provider_unavailable"
+
+    def __init__(self, detail=None, *, provider_message: str = ""):
+        super().__init__(detail)
+        self.provider_message = provider_message
+
+
+def clean_key(raw: str) -> str:
+    """
+    A secret key as pasted into a dashboard, made usable.
+
+    Stray whitespace or a trailing newline makes Python refuse to send the
+    header at all, and surrounding quotes are sometimes pasted in with the
+    value. A real key contains neither.
+    """
+    return raw.strip().strip("'\"").strip()
 
 
 @dataclass(frozen=True)
@@ -63,9 +88,13 @@ class PaystackProvider:
     base_url = "https://api.paystack.co"
 
     def __init__(self, secret_key: str):
-        if not secret_key:
-            raise ProviderUnavailable("Payments are not configured on this server.")
-        self.secret_key = secret_key
+        key = clean_key(secret_key)
+        if not key:
+            raise ProviderUnavailable(
+                "Payments are not configured on this server.",
+                provider_message="PAYSTACK_SECRET_KEY is not set",
+            )
+        self.secret_key = key
 
     def initialize(
         self, *, email: str, amount_kobo: int, reference: str, callback_url: str, metadata: dict
@@ -109,12 +138,29 @@ class PaystackProvider:
         try:
             with urllib.request.urlopen(request, timeout=15) as response:
                 payload = json.loads(response.read())
+        except urllib.error.HTTPError as exc:
+            # Paystack refuses a request with a 4xx and a JSON body saying why.
+            # HTTPError is a URLError, so it must be caught first or the reason
+            # is lost with it.
+            reason = _reason_from(exc)
+            logger.warning("Paystack %s %s refused (%s): %s", method, path, exc.code, reason)
+            raise ProviderUnavailable(provider_message=f"HTTP {exc.code}: {reason}") from exc
         except (urllib.error.URLError, TimeoutError, ValueError) as exc:
-            raise ProviderUnavailable() from exc
+            logger.warning("Paystack %s %s could not be reached: %r", method, path, exc)
+            raise ProviderUnavailable(provider_message=f"Unreachable: {exc!r}") from exc
 
         if not payload.get("status"):
-            raise ProviderUnavailable(payload.get("message") or None)
+            reason = payload.get("message") or "no reason given"
+            logger.warning("Paystack %s %s declined: %s", method, path, reason)
+            raise ProviderUnavailable(provider_message=reason)
         return payload.get("data") or {}
+
+
+def _reason_from(error: urllib.error.HTTPError) -> str:
+    try:
+        return json.loads(error.read()).get("message") or error.reason
+    except (ValueError, AttributeError, OSError):
+        return str(error.reason)
 
 
 class FakeProvider:
@@ -159,9 +205,8 @@ def signature_is_valid(body: bytes, signature: str | None) -> bool:
     Compared in constant time. Without this check anyone could post "charge
     succeeded" and unlock a farm for free.
     """
-    if not signature or not settings.PAYSTACK_SECRET_KEY:
+    key = clean_key(settings.PAYSTACK_SECRET_KEY)
+    if not signature or not key:
         return False
-    expected = hmac.new(
-        settings.PAYSTACK_SECRET_KEY.encode(), body, hashlib.sha512
-    ).hexdigest()
+    expected = hmac.new(key.encode(), body, hashlib.sha512).hexdigest()
     return hmac.compare_digest(expected, signature)
