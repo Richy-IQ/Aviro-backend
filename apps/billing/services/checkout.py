@@ -105,6 +105,20 @@ def _refuse_if_pointless(batch: Batch, offer: Offer) -> None:
         )
 
 
+def _receipt_email(user) -> str:
+    """
+    The address Paystack requires, for farmers who sign in with a phone number.
+
+    Built from the account id, never the phone number: it is handed to a third
+    party and may appear on a receipt.
+    """
+    inbox = settings.PAYSTACK_RECEIPT_EMAIL
+    if inbox and "@" in inbox:
+        local, _, domain = inbox.partition("@")
+        return f"{local}+{user.id.hex}@{domain}"
+    return f"{user.id.hex}@{settings.PAYSTACK_EMAIL_DOMAIN}"
+
+
 def start(*, farm: Farm, batch: Batch, user) -> Started:
     if batch.farm_id != farm.id:
         raise DomainError("That batch is not on this farm.")
@@ -124,9 +138,7 @@ def start(*, farm: Farm, batch: Batch, user) -> Started:
     )
 
     checkout = provider.initialize(
-        # The account id, never the phone number: this address is handed to a
-        # third party and may appear on a receipt.
-        email=f"{user.id.hex}@{settings.PAYSTACK_EMAIL_DOMAIN}",
+        email=_receipt_email(user),
         amount_kobo=payment.amount_kobo,
         reference=payment.reference,
         callback_url=f"{settings.FRONTEND_URL}/billing/done",

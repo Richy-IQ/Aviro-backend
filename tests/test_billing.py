@@ -182,6 +182,20 @@ def test_the_farmers_phone_number_is_not_handed_to_the_provider(batch, user):
     assert digits not in email and digits[-10:] not in email
 
 
+def test_receipts_can_go_to_one_inbox_before_there_is_a_domain(batch, user, settings):
+    """Gmail delivers name+anything@gmail.com to name@gmail.com."""
+    settings.PAYSTACK_RECEIPT_EMAIL = "aviropayments@gmail.com"
+    with mock.patch("apps.billing.services.checkout.get_provider") as get:
+        provider = get.return_value
+        provider.name = "fake"
+        provider.initialize.return_value = mock.Mock(authorization_url="https://x", reference="r")
+        checkout.start(farm=batch.farm, batch=batch, user=user)
+
+    email = provider.initialize.call_args.kwargs["email"]
+    assert email == f"aviropayments+{user.id.hex}@gmail.com"
+    assert user.phone.lstrip("+") not in email
+
+
 def test_the_return_address_is_ours_not_the_callers(batch, user):
     """So a checkout cannot be pointed at someone else's site."""
     started = checkout.start(farm=batch.farm, batch=batch, user=user)

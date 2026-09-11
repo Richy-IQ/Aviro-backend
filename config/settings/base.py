@@ -196,6 +196,12 @@ PAYSTACK_SECRET_KEY = env("PAYSTACK_SECRET_KEY", default="")
 # never the phone number.
 PAYSTACK_EMAIL_DOMAIN = env("PAYSTACK_EMAIL_DOMAIN", default="users.invalid")
 
+# For when there is no domain yet: one inbox you own, e.g. aviropayments@gmail.com.
+# Each farmer is sent as aviropayments+<account id>@gmail.com, which Gmail
+# delivers to the same inbox — so every receipt arrives in one place, useful
+# for matching payments against the bank. Takes precedence over the domain.
+PAYSTACK_RECEIPT_EMAIL = env("PAYSTACK_RECEIPT_EMAIL", default="")
+
 # Where Paystack sends the farmer back to after paying. Built here rather than
 # taken from the request, so a checkout cannot be pointed at someone else's site.
 FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:3000").rstrip("/")

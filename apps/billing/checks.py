@@ -18,11 +18,14 @@ def payments_are_configured(app_configs, **kwargs):
                 id="billing.W001",
             )
         )
-    if settings.PAYSTACK_EMAIL_DOMAIN.endswith(".invalid"):
+    if not settings.PAYSTACK_RECEIPT_EMAIL and settings.PAYSTACK_EMAIL_DOMAIN.endswith(".invalid"):
         problems.append(
             Warning(
-                "PAYSTACK_EMAIL_DOMAIN is a placeholder: payment receipts go nowhere.",
-                hint="Set it to a domain you own so receipts can be delivered or forwarded.",
+                "No receipt address is set: payment receipts go nowhere.",
+                hint=(
+                    "Set PAYSTACK_RECEIPT_EMAIL to an inbox you own (a Gmail address works), "
+                    "or PAYSTACK_EMAIL_DOMAIN to a domain you own."
+                ),
                 id="billing.W002",
             )
         )
