@@ -14,6 +14,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.billing.services import access as billing_access
 from apps.common.exceptions import DomainError
 from apps.farms.models import Farm, Organisation, OrganisationMembership
 from apps.farms.permissions import IsFarmMember, IsOrganisationMember
@@ -183,11 +184,16 @@ class FarmPeriodReportView(APIView):
         return get_object_or_404(Farm, pk=self.kwargs["farm_id"])
 
     def get(self, request: Request, farm_id) -> Response:
-        self.get_farm()
+        farm = self.get_farm()
 
         period = request.query_params.get("period", "week")
         if period not in period_service.PERIODS:
             period = "week"
+
+        # The weekly report is mostly deaths and doses coming up, which is the
+        # birds' welfare and stays free. The monthly view is the paperwork.
+        if period == "month":
+            billing_access.require(farm)
 
         summary = period_service.build(farm_id, period=period)
         return Response(PeriodReportSerializer(summary).data)
@@ -238,6 +244,7 @@ class FarmStatementView(APIView):
 
     def get(self, request: Request, farm_id) -> Response:
         farm = self.get_farm()
+        billing_access.require(farm)
         starts_on, ends_on = _range(request)
         statement = statement_service.build(farm, starts_on=starts_on, ends_on=ends_on)
         return Response(IncomeStatementSerializer(statement).data)
@@ -258,6 +265,7 @@ class FarmRecordsExportView(APIView):
 
     def get(self, request: Request, farm_id) -> HttpResponse:
         farm = self.get_farm()
+        billing_access.require(farm)
         dataset = request.query_params.get("dataset", "logs")
         if dataset not in export_service.DATASETS:
             raise DomainError("`dataset` must be either `logs` or `sales`.")

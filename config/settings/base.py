@@ -43,6 +43,7 @@ LOCAL_APPS = [
     "apps.flocks",
     "apps.insights",
     "apps.markets",
+    "apps.billing",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -170,4 +171,38 @@ LOGGING = {
     "loggers": {
         "django.db.backends": {"level": "WARNING", "handlers": ["console"], "propagate": False},
     },
+}
+
+# ── Billing ───────────────────────────────────────────────────────────────
+# Prices in naira. Kept in settings rather than code so a price change is a
+# deploy variable, not a release.
+BILLING_BATCH_PRICE = env.int("BILLING_BATCH_PRICE", default=2500)
+BILLING_MONTH_PRICE = env.int("BILLING_MONTH_PRICE", default=3000)
+BILLING_COOP_PRICE_PER_FARM = env.int("BILLING_COOP_PRICE_PER_FARM", default=4000)
+
+# How long after a batch's planned cycle ends the paid tools stay open. The
+# statement is most needed after the birds are sold, when a farmer goes to the
+# bank to fund the next batch.
+BILLING_GRACE_DAYS = env.int("BILLING_GRACE_DAYS", default=60)
+
+# "paystack" in production; "fake" settles every payment instantly, for local
+# work only. Production refuses to start with it.
+PAYMENTS_PROVIDER = env("PAYMENTS_PROVIDER", default="paystack")
+PAYSTACK_SECRET_KEY = env("PAYSTACK_SECRET_KEY", default="")
+
+# Paystack requires an email and farmers sign in with a phone number. Receipts
+# addressed to this domain go nowhere unless you own it — set it to a domain
+# you control before taking real payments. The local part is the account id,
+# never the phone number.
+PAYSTACK_EMAIL_DOMAIN = env("PAYSTACK_EMAIL_DOMAIN", default="users.invalid")
+
+# Where Paystack sends the farmer back to after paying. Built here rather than
+# taken from the request, so a checkout cannot be pointed at someone else's site.
+FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:3000").rstrip("/")
+
+# Printed on cooperative invoices. Left blank, the invoice says to ask for them.
+BANK_TRANSFER_DETAILS = {
+    "bank": env("AVIRO_BANK_NAME", default=""),
+    "account_number": env("AVIRO_ACCOUNT_NUMBER", default=""),
+    "account_name": env("AVIRO_ACCOUNT_NAME", default=""),
 }

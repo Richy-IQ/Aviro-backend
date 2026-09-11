@@ -1,6 +1,6 @@
 """Admin for farms, pens and who may act on them."""
 
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.db.models import Count, QuerySet
 from django.http import HttpRequest
 from django.utils.html import format_html
@@ -132,6 +132,22 @@ class OrganisationAdmin(admin.ModelAdmin):
     search_fields = ["name", "state", "lga"]
     inlines = [OrganisationMembershipInline, FarmInline]
     readonly_fields = ["id", "created_at", "updated_at"]
+    actions = ["draft_invoice"]
+
+    @admin.action(description="Draft an invoice for the next cycle (42 days)")
+    def draft_invoice(self, request: HttpRequest, queryset: QuerySet) -> None:
+        # Imported here: billing depends on farms, not the other way round.
+        from apps.billing.services.invoices import draft_for
+
+        for organisation in queryset:
+            invoice = draft_for(organisation)
+            self.message_user(
+                request,
+                f"Drafted {invoice.number} for {organisation.name}: "
+                f"{invoice.farms_count} farms, ₦{invoice.amount:,.0f}. "
+                "Check it, then mark it as sent.",
+                messages.SUCCESS,
+            )
 
     def get_queryset(self, request: HttpRequest) -> QuerySet:
         return super().get_queryset(request).annotate(_farms=Count("farms"))
